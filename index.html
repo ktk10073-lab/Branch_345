@@ -272,6 +272,19 @@
     </div>
   </div>
 
+  <!-- INSTALL APP (shown right after joining, before security setup) -->
+  <div class="screen" id="screen-install-app">
+    <div class="setup-wrap" style="justify-content:center;align-items:center;text-align:center;">
+      <div class="splash-mark" style="margin-bottom:18px;background:var(--lav-100);">
+        <svg viewBox="0 0 24 24" fill="#6E5AA0"><path d="M12 2L2 9h20L12 2zM4 10v9H2v2h20v-2h-2v-9h-2v9h-3v-9h-2v9h-3v-9H8v9H6v-9H4z"/></svg>
+      </div>
+      <h2 style="font-size:19px;color:var(--ink);margin-bottom:8px;">Install Branch Log</h2>
+      <p class="sub" style="max-width:280px;">Add it to your home screen so it opens like a real app — one tap, works offline.</p>
+      <button class="primary-btn" id="installAppBtn" style="margin-top:20px;">📲 Install app</button>
+      <button class="ghost-btn" id="skipInstallBtn" style="margin-top:6px;">Skip for now</button>
+    </div>
+  </div>
+
   <!-- CHOOSE SECURITY METHOD (after account created) -->
   <div class="screen" id="screen-choose-security">
     <div class="lock-header">
@@ -655,6 +668,13 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
+/* ================= Live in-app notifications (no server needed) =================
+   These fire as real system notifications whenever the app's own Firestore listeners
+   detect something new — new task assigned, new reply/comment, new broadcast message —
+   as long as this browser tab/app stays open or recently backgrounded (service worker
+   alive). If Chrome/the app has been fully closed for a while, the OS may suspend the
+   service worker and these won't fire until it's reopened — that gap only true FCM
+   push (requiring Firebase's paid Blaze plan) can close. */
 
 /* ================= State ================= */
 let branchId = localStorage.getItem('bl_branchId') || null;
@@ -699,6 +719,41 @@ function escapeHtml(str){
 function genId(prefix){
   return prefix + '-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
 }
+
+/* ================= PWA install prompt capture ================= */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+$('#installAppBtn').onclick = async () => {
+  // Ask for notification permission right here — a natural, expected moment
+  // (right after choosing to install), with clear feedback either way.
+  if('Notification' in window && Notification.permission === 'default'){
+    try{
+      const perm = await Notification.requestPermission();
+      if(perm === 'granted') toast('Notifications enabled');
+    }catch(e){}
+  }
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if(choice.outcome === 'accepted') toast('Installed!');
+    goToChooseSecurity(true);
+  } else {
+    // Prompt not available yet (already installed, or browser needs more engagement first) —
+    // don't block the person, just move them forward.
+    toast('Use your browser menu → "Add to Home Screen" if this didn\'t open');
+    goToChooseSecurity(true);
+  }
+};
+$('#skipInstallBtn').onclick = async () => {
+  if('Notification' in window && Notification.permission === 'default'){
+    try{ await Notification.requestPermission(); }catch(e){}
+  }
+  goToChooseSecurity(true);
+};
 
 /* ================= Boot ================= */
 async function boot(){
@@ -747,7 +802,7 @@ $('#createBranchBtn').onclick = async () => {
   localStorage.setItem('bl_currentUserId', currentUserId);
   await loadBranch(branchId);
   toast('Branch created');
-  goToChooseSecurity(true);
+  showScreen('install-app');
 };
 
 /* ================= Invite (staff join flow) ================= */
@@ -774,11 +829,12 @@ $('#joinBranchBtn').onclick = async () => {
   });
   await deleteDoc(doc(db, 'invites', inviteCode)).catch(()=>{});
   currentUserId = staffId;
+  currentUser = { id: staffId, name, role: inviteRecord.role, isManager: false, active: true, joined: true };
   localStorage.setItem('bl_branchId', branchId);
   localStorage.setItem('bl_currentUserId', currentUserId);
   history.replaceState(null, '', window.location.pathname);
   toast('Welcome to the team');
-  goToChooseSecurity(true);
+  showScreen('install-app');
 };
 
 /* ================= Load branch data + listeners ================= */
@@ -811,20 +867,93 @@ function listenStaff(){
     renderAll();
   });
 }
-function listenEntries(){
-  const q = query(collection(db, 'branches', branchId, 'entries'), orderBy('createdAt', 'desc'));
-  onSnapshot(q, (snap) => {
-    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderAll();
-  });
-}
 let notifications = [];
+let swRegistration = null;
+async function ensureServiceWorker(){
+  if(!('serviceWorker' in navigator)) return null;
+  try{
+    swRegistration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    return swRegistration;
+  }catch(e){
+    console.warn('Service worker registration failed', e);
+    return null;
+  }
+}
+function fireLocalNotification(title, body){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible'){
+    // App is open and in front — a toast is enough, a system popup would be redundant/annoying
+    toast(body);
+    return;
+  }
+  if(swRegistration){
+    swRegistration.showNotification(title, {
+      body, icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [200,100,200], tag: 'branch-log-live'
+    });
+  } else if(Notification.permission === 'granted'){
+    new Notification(title, { body, icon: 'icon-192.png' });
+  }
+}
+let notifFirstLoad = true;
 function listenNotifications(){
   const q = query(collection(db, 'branches', branchId, 'notifications'), orderBy('createdAt', 'desc'));
   onSnapshot(q, (snap) => {
+    const prevIds = new Set(notifications.map(n => n.id));
     notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if(!notifFirstLoad && currentUser && !currentUser.isManager){
+      const fresh = notifications.filter(n => !prevIds.has(n.id) && n.targets?.includes(currentUserId));
+      fresh.forEach(n => fireLocalNotification('Message from ' + (staffName(n.from) || 'Manager'), n.message || ''));
+    }
+    notifFirstLoad = false;
     renderAll();
     updateNotifBadge();
+  });
+}
+let entriesFirstLoad = true;
+function listenEntries(){
+  const q = query(collection(db, 'branches', branchId, 'entries'), orderBy('createdAt', 'desc'));
+  onSnapshot(q, (snap) => {
+    const prevById = new Map(entries.map(e => [e.id, e]));
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if(!entriesFirstLoad && currentUser){
+      if(!currentUser.isManager){
+        // New task assigned to me
+        entries.forEach(e => {
+          const isNew = !prevById.has(e.id);
+          if(isNew && e.type === 'assigned' && e.assignedTo === currentUserId){
+            fireLocalNotification('New task assigned', e.task || '');
+          }
+          // New comment added to one of my tasks, from someone else
+          if(!isNew && e.type === 'assigned' && e.assignedTo === currentUserId){
+            const prevCount = (prevById.get(e.id).comments || []).length;
+            const nowCount = (e.comments || []).length;
+            if(nowCount > prevCount){
+              const latest = e.comments[e.comments.length - 1];
+              if(latest && latest.from !== currentUserId){
+                fireLocalNotification('New comment on your task', latest.text || '');
+              }
+            }
+          }
+        });
+      } else {
+        // Manager: notify on new reply-bearing activity (someone commented on a task)
+        entries.forEach(e => {
+          const isNew = !prevById.has(e.id);
+          if(!isNew && e.type === 'assigned'){
+            const prevCount = (prevById.get(e.id).comments || []).length;
+            const nowCount = (e.comments || []).length;
+            if(nowCount > prevCount){
+              const latest = e.comments[e.comments.length - 1];
+              if(latest && latest.from !== currentUserId){
+                fireLocalNotification(staffName(e.assignedTo) + ' replied', latest.text || '');
+              }
+            }
+          }
+        });
+      }
+    }
+    entriesFirstLoad = false;
+    renderAll();
   });
 }
 function myNotifications(){
@@ -848,7 +977,7 @@ function goToChooseSecurity(firstTime){
   showScreen('choose-security');
   $('#secAvatar').className = 'avatar-lg' + (currentUser?.isManager ? ' mgr':'');
   $('#secAvatar').textContent = initials(currentUser?.name || '');
-  $('#secName').textContent = firstTime ? `Hi, ${currentUser?.name?.split(' ')[0] || ''}` : 'Change unlock method';
+  $('#secName').textContent = firstTime ? `Hi, ${(currentUser?.name||'').split(' ')[0] || 'there'}` : 'Change unlock method';
   const hasWebAuthn = window.PublicKeyCredential !== undefined;
   $('#useBiometricBtn').style.display = hasWebAuthn ? 'flex' : 'none';
 }
@@ -1039,6 +1168,7 @@ function goToDashboard(){
   if(currentUser?.isManager) showScreen('mgr-overview');
   else showScreen('staff-dash');
   renderAll();
+  ensureServiceWorker(); // needed so background/tab-hidden notifications can display
 }
 
 /* ================= Nav wiring ================= */
@@ -1070,13 +1200,41 @@ function renderStaffNotifs(){
     wrap.innerHTML = '<div class="empty-state">No notifications yet.</div>';
     return;
   }
-  wrap.innerHTML = `<div class="entry-list" style="padding-top:14px;">` + mine.map(n => `
-    <div class="entry">
-      <div class="row-icon" style="background:var(--lav-100);">📢</div>
-      <div class="body"><div class="t">Message from ${escapeHtml(staffName(n.from) || 'Manager')}</div>
-      <div class="m">${escapeHtml(n.message||'')}</div>
-      <div class="m" style="margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div></div>
-    </div>`).join('') + `</div>`;
+  wrap.innerHTML = `<div class="entry-list" style="padding-top:14px;padding-bottom:20px;">` + mine.map(n => {
+    const replies = (n.replies || []).filter(r => r.from === currentUserId);
+    const repliesHtml = replies.map(r => `
+      <div style="background:var(--lav-100);border-radius:10px;padding:8px 10px;margin-top:6px;font-size:12px;">
+        <b style="color:var(--lav-700);">You replied:</b> ${escapeHtml(r.text)}
+      </div>`).join('');
+    return `
+    <div class="entry" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;gap:9px;">
+        <div class="row-icon" style="background:var(--lav-100);flex-shrink:0;">📢</div>
+        <div class="body"><div class="t">Message from ${escapeHtml(staffName(n.from) || 'Manager')}</div>
+        <div class="m">${escapeHtml(n.message||'')}</div>
+        <div class="m" style="margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div></div>
+      </div>
+      ${repliesHtml}
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <input class="field" style="margin-bottom:0;flex:1;font-size:12px;padding:8px 10px;" placeholder="Reply..." data-reply-input="${n.id}">
+        <button style="background:var(--lav-600);color:#fff;border:none;border-radius:10px;padding:0 14px;font-weight:700;font-size:12px;" data-reply-send="${n.id}">Send</button>
+      </div>
+    </div>`;
+  }).join('') + `</div>`;
+
+  $$('[data-reply-send]', wrap).forEach(btn => {
+    btn.onclick = async () => {
+      const notifId = btn.dataset.replySend;
+      const input = $(`[data-reply-input="${notifId}"]`, wrap);
+      const text = input.value.trim();
+      if(!text) return;
+      const n = notifications.find(x => x.id === notifId);
+      const newReplies = [...(n.replies || []), { from: currentUserId, text, at: new Date().toISOString() }];
+      await updateDoc(doc(db, 'branches', branchId, 'notifications', notifId), { replies: newReplies });
+      input.value = '';
+      toast('Reply sent');
+    };
+  });
 }
 
 /* ================= Helpers ================= */
@@ -1133,17 +1291,44 @@ function renderStaffDash(){
   if(assignedToMe.length === 0){
     assignedList.innerHTML = '<div class="empty-state">No work assigned right now.</div>';
   } else {
-    assignedList.innerHTML = assignedToMe.slice(0,10).map(e => `
-      <div class="entry">
-        <button class="check ${e.status==='done'?'done':''}" data-toggle-task="${e.id}"></button>
-        <div class="body"><div class="t">${escapeHtml(e.task||'')}</div>
-        <div class="m">By ${escapeHtml(staffName(e.createdBy))} ${e.dueDate ? '· Due '+e.dueDate : ''}</div></div>
-      </div>`).join('');
+    assignedList.innerHTML = assignedToMe.slice(0,10).map(e => {
+      const comments = e.comments || [];
+      const commentsHtml = comments.map(c => `
+        <div style="background:${c.from===currentUserId?'var(--lav-100)':'#fff'};border:1px solid var(--lav-100);border-radius:10px;padding:7px 9px;margin-top:5px;font-size:11.5px;">
+          <b style="color:var(--lav-700);">${c.from===currentUserId?'You':escapeHtml(staffName(c.from))}:</b> ${escapeHtml(c.text)}
+        </div>`).join('');
+      return `
+      <div class="entry" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;gap:9px;">
+          <button class="check ${e.status==='done'?'done':''}" data-toggle-task="${e.id}" style="flex-shrink:0;margin-top:1px;"></button>
+          <div class="body"><div class="t">${escapeHtml(e.task||'')}</div>
+          <div class="m">By ${escapeHtml(staffName(e.createdBy))} ${e.dueDate ? '· Due '+e.dueDate : ''}</div></div>
+        </div>
+        ${commentsHtml}
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input class="field" style="margin-bottom:0;flex:1;font-size:12px;padding:8px 10px;" placeholder="Add a comment..." data-comment-input="${e.id}">
+          <button style="background:var(--lav-600);color:#fff;border:none;border-radius:10px;padding:0 14px;font-weight:700;font-size:12px;" data-comment-send="${e.id}">Send</button>
+        </div>
+      </div>`;
+    }).join('');
     $$('[data-toggle-task]', assignedList).forEach(btn => {
       btn.onclick = async () => {
         const id = btn.dataset.toggleTask;
         const e = entries.find(x => x.id === id);
         await updateDoc(doc(db,'branches',branchId,'entries',id), { status: e.status==='done' ? 'pending' : 'done' });
+      };
+    });
+    $$('[data-comment-send]', assignedList).forEach(btn => {
+      btn.onclick = async () => {
+        const taskId = btn.dataset.commentSend;
+        const input = $(`[data-comment-input="${taskId}"]`, assignedList);
+        const text = input.value.trim();
+        if(!text) return;
+        const e = entries.find(x => x.id === taskId);
+        const newComments = [...(e.comments || []), { from: currentUserId, text, at: new Date().toISOString() }];
+        await updateDoc(doc(db,'branches',branchId,'entries',taskId), { comments: newComments });
+        input.value = '';
+        toast('Comment added');
       };
     });
   }
@@ -1274,8 +1459,11 @@ function renderMgrOverview(){
       const name = e.type==='assigned' ? staffName(e.assignedTo) : staffName(e.staffId);
       const badge = e.type==='assigned' ? (e.status==='done' ? entryBadge('assigned') : '<span class="badge pending">Pending</span>') : entryBadge(e.type);
       const text = e.type==='assigned' ? e.task : `${e.customer? e.customer+' — ':''}${e.detail||''}`;
-      return `<div class="entry">${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}</div><div class="m">${fmtTime(e.createdAt)}</div></div></div>`;
+      const commentCount = e.comments ? e.comments.length : 0;
+      const commentTag = commentCount > 0 ? ` <span style="color:var(--lav-600);font-weight:700;">💬 ${commentCount}</span>` : '';
+      return `<button class="entry" style="width:100%;border:1px solid var(--lav-100);text-align:left;font-family:inherit;" data-feed-drill="${e.type==='assigned'?e.assignedTo:e.staffId}">${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}</div><div class="m">${fmtTime(e.createdAt)}</div></div></button>`;
     }).join('');
+    $$('[data-feed-drill]', feedList).forEach(btn => { btn.onclick = () => openDrilldown(btn.dataset.feedDrill); });
   }
 }
 $$('#mgrFilters .chip').forEach(chip => {
@@ -1313,8 +1501,15 @@ function renderDrilldown(){
   else {
     list.innerHTML = all.slice(0,20).map(e => {
       if(e.type === 'assigned'){
-        return `<div class="entry">${e.status==='done'?entryBadge('assigned'):'<span class="badge pending">Pending</span>'}
-          <div class="body"><div class="t">${escapeHtml(e.task||'')}</div><div class="m">${fmtDate(e.createdAt)}, ${fmtTime(e.createdAt)}</div></div></div>`;
+        const comments = (e.comments || []).map(c => `
+          <div style="background:var(--lav-100);border-radius:8px;padding:6px 9px;margin-top:4px;font-size:11px;">
+            <b style="color:var(--lav-700);">${escapeHtml(staffName(c.from))}:</b> ${escapeHtml(c.text)}
+          </div>`).join('');
+        return `<div class="entry" style="flex-direction:column;align-items:stretch;">
+          <div style="display:flex;gap:9px;">${e.status==='done'?entryBadge('assigned'):'<span class="badge pending">Pending</span>'}
+          <div class="body"><div class="t">${escapeHtml(e.task||'')}</div><div class="m">${fmtDate(e.createdAt)}, ${fmtTime(e.createdAt)}</div></div></div>
+          ${comments}
+        </div>`;
       }
       return `<div class="entry">${entryBadge(e.type)}<div class="body"><div class="t">${escapeHtml(e.customer?e.customer+' — ':'')}${escapeHtml(e.detail||'')}</div>
         <div class="m">${fmtDate(e.createdAt)}, ${fmtTime(e.createdAt)}</div></div></div>`;

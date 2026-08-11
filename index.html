@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Branch Log</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6E5AA0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&display=swap');
+  :root{
+    --lav-50:#F5F2FB; --lav-100:#EDE7F8; --lav-200:#DCD1F0;
+    --lav-400:#A48EDB; --lav-500:#8A6FCE; --lav-600:#6E5AA0; --lav-700:#4A3B70;
+    --ink:#2E2640; --ink-soft:#5C5270; --card:#FDFCFE;
+    --gold:#C9A24B; --ok:#4E9C6E; --warn:#C9822B; --danger:#C4573F;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;font-family:'Inter',sans-serif;background:var(--lav-50);color:var(--ink);overflow-x:hidden;}
+  h1,h2,h3{font-family:'Manrope',sans-serif;margin:0;}
+  button{font-family:'Inter',sans-serif;cursor:pointer;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--card);display:flex;flex-direction:column;position:relative;}
+  .screen{display:none;flex-direction:column;min-height:100vh;animation:fadeIn .2s ease;}
+  .screen.active{display:flex;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+
+  /* ---- Splash / Welcome ---- */
+  #screen-splash, #screen-welcome{background:linear-gradient(160deg,var(--lav-600),var(--lav-700));color:#fff;
+    align-items:center;justify-content:center;gap:16px;min-height:100vh;padding:24px;text-align:center;}
+  .splash-mark{width:76px;height:76px;border-radius:22px;background:rgba(255,255,255,0.15);
+    display:flex;align-items:center;justify-content:center;padding:16px;}
+  .splash-mark svg{width:100%;height:100%;}
+  #screen-splash h1, #screen-welcome h1{font-size:24px;font-weight:800;letter-spacing:-0.02em;}
+  #screen-splash p{margin:0;font-size:12px;color:var(--lav-100);letter-spacing:.06em;text-transform:uppercase;}
+  #screen-welcome p.tag{margin:0;font-size:13px;color:var(--lav-100);max-width:280px;line-height:1.5;}
+  .welcome-btn{margin-top:20px;background:#fff;color:var(--lav-700);border:none;border-radius:14px;padding:14px 32px;
+    font-weight:800;font-family:'Manrope',sans-serif;font-size:14px;}
+
+  /* ---- Wizard (first branch setup) ---- */
+  .setup-wrap{padding:24px;flex:1;display:flex;flex-direction:column;}
+  .setup-wrap h2{font-size:20px;margin-bottom:6px;}
+  .setup-wrap p.sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px;}
+  label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:5px;}
+  input.field,textarea.field,select.field{width:100%;border:1.5px solid var(--lav-200);border-radius:12px;padding:12px;
+    font-size:14px;color:var(--ink);background:#fff;font-family:'Inter',sans-serif;margin-bottom:16px;}
+  .who-tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .who-tile{background:var(--lav-50);border:1.5px solid var(--lav-200);border-radius:16px;padding:16px 10px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .who-tile.selected{border-color:var(--lav-600);background:var(--lav-100);}
+  .avatar{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--lav-400),var(--lav-600));
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;font-family:'Manrope',sans-serif;flex-shrink:0;}
+  .avatar.mgr{background:linear-gradient(135deg,var(--gold),var(--lav-700));}
+  .who-tile .name{font-weight:600;font-size:13px;text-align:center;}
+  .who-tile .role{font-size:10px;color:var(--ink-soft);text-align:center;}
+  .primary-btn{background:var(--lav-700);color:#fff;border:none;border-radius:14px;padding:14px;font-weight:700;
+    font-family:'Manrope',sans-serif;font-size:14px;text-align:center;margin-top:auto;width:100%;}
+  .primary-btn:disabled{opacity:.4;}
+  .ghost-btn{background:transparent;color:var(--lav-600);border:none;font-weight:600;font-size:13px;text-align:center;padding:10px;}
+  .invite-banner{background:var(--lav-100);border:1px solid var(--lav-200);border-radius:14px;padding:14px;margin-bottom:16px;}
+  .invite-banner .t{font-weight:700;font-size:13px;color:var(--lav-700);}
+  .invite-banner .m{font-size:11.5px;color:var(--ink-soft);margin-top:3px;}
+
+  /* ---- Unlock / security ---- */
+  .lock-header{padding:44px 24px 8px;text-align:center;}
+  .avatar-lg{width:64px;height:64px;border-radius:50%;margin:0 auto 12px;
+    background:linear-gradient(135deg,var(--lav-400),var(--lav-600));color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;font-family:'Manrope',sans-serif;}
+  .avatar-lg.mgr{background:linear-gradient(135deg,var(--gold),var(--lav-700));}
+  .lock-header h2{font-size:18px;}
+  .lock-header p{margin:4px 0 0;font-size:12px;color:var(--ink-soft);}
+  .pattern-grid{margin:26px auto;width:240px;height:240px;display:grid;grid-template-columns:repeat(3,1fr);
+    grid-template-rows:repeat(3,1fr);place-items:center;position:relative;touch-action:none;}
+  .pdot{width:20px;height:20px;border-radius:50%;border:2px solid var(--lav-400);background:#fff;transition:.1s;}
+  .pdot.active{background:var(--lav-600);border-color:var(--lav-600);box-shadow:0 0 0 8px var(--lav-100);}
+  .pdot.error{background:var(--danger);border-color:var(--danger);box-shadow:0 0 0 8px #FBE4DE;}
+  .hint{text-align:center;font-size:12px;color:var(--ink-soft);padding:0 30px;}
+  .hint.err{color:var(--danger);font-weight:600;}
+  .switch-user-link{text-align:center;font-size:12px;color:var(--ink-soft);text-decoration:underline;margin-top:20px;background:none;border:none;width:100%;}
+  .fp-wrap{padding:30px 24px;display:flex;flex-direction:column;align-items:center;gap:16px;}
+  .fp-circle{width:104px;height:104px;border-radius:50%;background:var(--lav-100);border:2px dashed var(--lav-400);
+    display:flex;align-items:center;justify-content:center;font-size:40px;}
+  .fp-status{font-size:12.5px;color:var(--lav-600);font-weight:600;text-align:center;padding:0 20px;}
+  .use-pattern-link{font-size:12px;color:var(--ink-soft);text-decoration:underline;margin-top:6px;background:none;border:none;}
+
+  /* ---- Dashboard top ---- */
+  .db-top{background:var(--lav-600);color:#fff;padding:18px 20px 22px;border-radius:0 0 22px 22px;position:relative;flex-shrink:0;}
+  .db-top.mgr-top{background:linear-gradient(135deg,var(--lav-700),#332755);}
+  .db-top .avatar-btn{position:absolute;top:18px;right:18px;width:34px;height:34px;border-radius:50%;
+    background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:'Manrope',sans-serif;border:none;color:#fff;}
+  .db-top .avatar-btn.gold{border:1px solid var(--gold);color:var(--gold);background:rgba(255,255,255,0.1);}
+  .greet{font-size:10.5px;color:var(--lav-100);font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+  .db-top h2{font-size:18px;margin:4px 0 12px;}
+  .stats{display:flex;gap:8px;}
+  .stat{background:rgba(255,255,255,0.12);border-radius:12px;padding:8px 10px;flex:1;text-align:center;}
+  .stat b{display:block;font-size:15px;font-family:'Manrope',sans-serif;}
+  .stat span{font-size:9px;color:var(--lav-100);}
+
+  .main-scroll{flex:1;overflow-y:auto;padding-bottom:10px;}
+  .addbtn{margin:14px 18px 4px;background:var(--lav-700);color:#fff;border:none;border-radius:14px;
+    padding:12px;font-weight:700;font-family:'Manrope',sans-serif;font-size:13px;text-align:center;width:calc(100% - 36px);}
+  .sectiontitle{padding:14px 18px 6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);display:flex;justify-content:space-between;align-items:center;}
+  .sectiontitle .cnt{background:var(--danger);color:#fff;font-size:9px;padding:1px 7px;border-radius:10px;}
+  .entry-list{padding:0 14px;display:flex;flex-direction:column;gap:7px;}
+  .entry{background:var(--lav-50);border:1px solid var(--lav-100);border-radius:14px;padding:10px 12px;display:flex;align-items:flex-start;gap:9px;}
+  .badge{font-size:8.5px;font-weight:700;padding:3px 6px;border-radius:20px;text-transform:uppercase;white-space:nowrap;margin-top:2px;flex-shrink:0;}
+  .badge.assigned{background:#FBE8D2;color:#9C6A22;}
+  .badge.visit{background:#DCEBE0;color:var(--ok);}
+  .badge.note{background:var(--lav-100);color:var(--lav-700);}
+  .badge.pending{background:#FBE4DE;color:var(--danger);}
+  .entry .body{flex:1;min-width:0;}
+  .entry .body .t{font-size:12.5px;font-weight:600;}
+  .entry .body .m{font-size:10.5px;color:var(--ink-soft);margin-top:1px;}
+  .check{width:18px;height:18px;border-radius:6px;border:2px solid var(--lav-400);flex-shrink:0;margin-top:1px;background:none;padding:0;}
+  .check.done{background:var(--ok);border-color:var(--ok);position:relative;}
+  .check.done::after{content:'✓';color:#fff;font-size:11px;position:absolute;top:-3px;left:1px;}
+  .empty-state{padding:30px 20px;text-align:center;color:var(--ink-soft);font-size:12.5px;}
+
+  .navbar{display:flex;border-top:1px solid var(--lav-100);padding:10px 0 max(10px,env(safe-area-inset-bottom));background:#fff;flex-shrink:0;}
+  .navitem{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9.5px;color:var(--ink-soft);font-weight:600;background:none;border:none;padding:4px;}
+  .navitem.active{color:var(--lav-600);}
+  .navbar.mgr .navitem.active{color:var(--lav-700);}
+  .navicon{font-size:17px;}
+
+  /* ---- Form screens ---- */
+  .form-top{padding:16px 18px;border-bottom:1px solid var(--lav-100);display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  .form-top button.x{background:none;border:none;font-size:18px;color:var(--ink-soft);padding:0;}
+  .form-top h2{font-size:15px;}
+  .form-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;}
+  .type-row{display:flex;gap:7px;}
+  .typebtn{flex:1;border:1.5px solid var(--lav-200);border-radius:12px;padding:9px 4px;text-align:center;font-size:10.5px;font-weight:700;color:var(--ink-soft);background:#fff;}
+  .typebtn.active{background:var(--lav-600);border-color:var(--lav-600);color:#fff;}
+  textarea.field{min-height:70px;resize:vertical;}
+  .staffpick{display:flex;gap:6px;flex-wrap:wrap;}
+  .pickchip{border:1.5px solid var(--lav-200);border-radius:20px;padding:6px 12px;font-size:11px;font-weight:600;color:var(--ink-soft);background:#fff;}
+  .pickchip.sel{background:var(--lav-600);border-color:var(--lav-600);color:#fff;}
+  .pickchip.all-chip{background:var(--gold);border-color:var(--gold);color:#fff;}
+  .savebtn{background:var(--lav-700);color:#fff;border:none;border-radius:14px;padding:13px;
+    font-weight:700;font-family:'Manrope',sans-serif;font-size:14px;text-align:center;width:100%;}
+  .savebtn:disabled{opacity:.4;}
+
+  /* ---- Profile / Settings rows ---- */
+  .p-top{background:linear-gradient(135deg,var(--lav-600),var(--lav-700));padding:30px 22px 40px;color:#fff;text-align:center;position:relative;flex-shrink:0;}
+  .backarrow{position:absolute;top:16px;left:16px;font-size:15px;opacity:.85;background:none;border:none;color:#fff;padding:4px;}
+  .p-avatar{width:68px;height:68px;border-radius:50%;margin:4px auto 10px;background:rgba(255,255,255,0.18);
+    border:2px solid rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:24px;font-family:'Manrope',sans-serif;}
+  .p-top h2{font-size:18px;}
+  .p-top p{margin:3px 0 0;font-size:11.5px;color:var(--lav-100);}
+  .stats-strip{display:flex;margin:-22px 16px 0;background:#fff;border-radius:16px;
+    box-shadow:0 8px 24px rgba(74,59,112,0.12);padding:14px 6px;position:relative;z-index:2;flex-shrink:0;}
+  .stat2{flex:1;text-align:center;border-right:1px solid var(--lav-100);}
+  .stat2:last-child{border-right:none;}
+  .stat2 b{display:block;font-size:16px;font-family:'Manrope',sans-serif;color:var(--lav-700);}
+  .stat2 span{font-size:8.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;}
+  .row-list{padding:0 14px;display:flex;flex-direction:column;gap:7px;}
+  .row{background:var(--lav-50);border:1px solid var(--lav-100);border-radius:13px;padding:11px 12px;display:flex;align-items:center;gap:11px;
+    width:100%;text-align:left;font-family:'Inter',sans-serif;}
+  .row-icon{width:30px;height:30px;border-radius:9px;background:var(--lav-100);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+  .row .t{font-size:12.5px;font-weight:600;flex:1;}
+  .row .m{font-size:10px;color:var(--ink-soft);margin-top:1px;}
+  .chev{color:var(--ink-soft);font-size:13px;}
+  .row.danger .t{color:var(--danger);}
+  .row.danger .row-icon{background:#FBE4DE;}
+  .badge-mini{font-size:8.5px;font-weight:700;background:var(--ok);color:#fff;padding:2px 6px;border-radius:20px;}
+  .toggle{width:38px;height:22px;border-radius:20px;background:var(--lav-200);position:relative;flex-shrink:0;border:none;padding:0;}
+  .toggle.on{background:var(--lav-600);}
+  .toggle::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;}
+  .toggle.on::after{left:18px;}
+
+  /* ---- Manager overview extras ---- */
+  .filters{display:flex;gap:7px;padding:12px 14px 4px;overflow-x:auto;}
+  .chip{background:var(--lav-50);border:1px solid var(--lav-200);color:var(--ink-soft);font-size:10.5px;font-weight:600;padding:6px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
+  .chip.active{background:var(--lav-700);color:#fff;border-color:var(--lav-700);}
+  .person-row{display:flex;gap:11px;padding:12px 18px 6px;overflow-x:auto;}
+  .p-avatar-sm{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--lav-400),var(--lav-600));
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;
+    font-family:'Manrope',sans-serif;border:2px solid var(--lav-200);position:relative;padding:0;}
+  .p-avatar-sm .pending-dot{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--warn);border:2px solid #fff;}
+
+  /* Pending screen */
+  .pd-summary{display:flex;gap:7px;padding:14px 18px 4px;}
+  .pd-card{flex:1;border-radius:13px;padding:10px 8px;text-align:center;}
+  .pd-card.total{background:var(--lav-100);}
+  .pd-card.overdue{background:#FBE4DE;}
+  .pd-card.today{background:#FBE8D2;}
+  .pd-card b{display:block;font-size:17px;font-family:'Manrope',sans-serif;}
+  .pd-card.total b{color:var(--lav-700);}
+  .pd-card.overdue b{color:var(--danger);}
+  .pd-card.today b{color:var(--warn);}
+  .pd-card span{font-size:8.5px;color:var(--ink-soft);text-transform:uppercase;font-weight:600;}
+  .p-item{background:var(--lav-50);border:1px solid var(--lav-100);border-radius:14px;margin:0 14px 8px;padding:12px 13px;}
+  .p-item.overdue{border-color:#F0C4B8;background:#FDF3F0;}
+  .p-item-top{display:flex;align-items:center;gap:9px;}
+  .p-item-top .nm{font-size:11.5px;font-weight:700;flex:1;}
+  .p-item-top .due{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:10px;}
+  .due.late{background:var(--danger);color:#fff;}
+  .due.today2{background:var(--warn);color:#fff;}
+  .due.future{background:var(--lav-100);color:var(--lav-700);}
+  .p-item .task{font-size:12.5px;margin:7px 0 9px;line-height:1.4;}
+  .p-actions{display:flex;gap:6px;}
+  .p-actions button{flex:1;border:none;border-radius:9px;padding:7px 4px;font-size:10px;font-weight:700;font-family:'Manrope',sans-serif;}
+  .act-done{background:#DCEBE0;color:var(--ok);}
+  .act-cancel{background:#FBE4DE;color:var(--danger);}
+
+  /* Manage staff */
+  .s-row{background:var(--lav-50);border:1px solid var(--lav-100);border-radius:14px;padding:11px 12px;display:flex;align-items:center;gap:10px;margin:0 14px 8px;}
+  .s-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--lav-400),var(--lav-600));
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;font-family:'Manrope',sans-serif;}
+  .s-info{flex:1;min-width:0;}
+  .s-info .nm{font-size:12.5px;font-weight:700;}
+  .s-info .role{font-size:10.5px;color:var(--ink-soft);}
+  .s-status{font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:10px;flex-shrink:0;}
+  .s-status.pending{background:#FBE8D2;color:#9C6A22;}
+  .s-status.active{background:#DCEBE0;color:var(--ok);}
+  .s-menu{color:var(--ink-soft);font-size:16px;padding:4px 6px;background:none;border:none;flex-shrink:0;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:10px 18px;border-radius:20px;font-size:12.5px;font-weight:600;z-index:999;opacity:0;transition:.25s;pointer-events:none;max-width:85%;text-align:center;}
+  .toast.show{opacity:1;bottom:30px;}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(46,38,64,0.5);z-index:100;display:none;align-items:flex-end;justify-content:center;}
+  .modal-overlay.active{display:flex;}
+  .modal-sheet{background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;animation:slideUp .2s ease;}
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+
+  .link-box{background:var(--lav-50);border:1.5px dashed var(--lav-400);border-radius:12px;padding:12px;
+    font-size:11px;color:var(--lav-700);word-break:break-all;margin-bottom:10px;font-family:monospace;}
+  .copy-btn{background:var(--lav-700);color:#fff;border:none;border-radius:12px;padding:11px;font-weight:700;
+    font-family:'Manrope',sans-serif;font-size:12.5px;width:100%;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SPLASH -->
+  <div class="screen active" id="screen-splash">
+    <div class="splash-mark"><svg viewBox="0 0 24 24" fill="white"><path d="M12 2L2 9h20L12 2zM4 10v9H2v2h20v-2h-2v-9h-2v9h-3v-9h-2v9h-3v-9H8v9H6v-9H4z"/></svg></div>
+    <h1>Branch Log</h1>
+  </div>
+
+  <!-- WELCOME (very first launch on this device, no data yet) -->
+  <div class="screen" id="screen-welcome">
+    <div class="splash-mark"><svg viewBox="0 0 24 24" fill="white"><path d="M12 2L2 9h20L12 2zM4 10v9H2v2h20v-2h-2v-9h-2v9h-3v-9h-2v9h-3v-9H8v9H6v-9H4z"/></svg></div>
+    <h1>Branch Log</h1>
+    <p class="tag">A simple daily work log for your branch — tasks, visits, and notes, all in one place for your whole team.</p>
+    <button class="welcome-btn" id="welcomeStartBtn">Get started</button>
+  </div>
+
+  <!-- CREATE BRANCH (first-run wizard, no invite code) -->
+  <div class="screen" id="screen-create-branch">
+    <div class="setup-wrap">
+      <h2>Set up your branch</h2>
+      <p class="sub">This creates your branch and your manager account.</p>
+      <label>Branch name</label>
+      <input class="field" id="branchNameInput" placeholder="e.g. Kuvempunagar">
+      <label>Your name (Manager / Admin)</label>
+      <input class="field" id="adminNameInput" placeholder="e.g. Dilip">
+      <button class="primary-btn" id="createBranchBtn">Create branch</button>
+    </div>
+  </div>
+
+  <!-- JOIN VIA INVITE (staff opening their unique link) -->
+  <div class="screen" id="screen-join-invite">
+    <div class="setup-wrap">
+      <div class="invite-banner" id="inviteBanner">
+        <div class="t">You've been invited</div>
+        <div class="m" id="inviteBannerDetail">Loading invite...</div>
+      </div>
+      <p class="sub">Confirm your details to join.</p>
+      <label>Your name</label>
+      <input class="field" id="inviteNameInput" placeholder="Your name">
+      <button class="primary-btn" id="joinBranchBtn">Join branch</button>
+    </div>
+  </div>
+
+  <!-- CHOOSE SECURITY METHOD (after account created) -->
+  <div class="screen" id="screen-choose-security">
+    <div class="lock-header">
+      <div class="avatar-lg" id="secAvatar"></div>
+      <h2 id="secName">Secure your account</h2>
+      <p>Choose how you'll unlock the app</p>
+    </div>
+    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
+      <button class="row" id="useBiometricBtn" style="padding:16px;">
+        <div class="row-icon" style="width:40px;height:40px;font-size:19px;">👆</div>
+        <div><div class="t">Use phone security</div><div class="m">Fingerprint, face, or screen lock — whatever this phone already uses</div></div>
+      </button>
+      <button class="row" id="usePatternBtn" style="padding:16px;">
+        <div class="row-icon" style="width:40px;height:40px;font-size:19px;">⠿</div>
+        <div><div class="t">Use a pattern instead</div><div class="m">Draw a simple 3×3 pattern</div></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- SET PATTERN (fallback flow) -->
+  <div class="screen" id="screen-setpattern">
+    <div class="lock-header">
+      <div class="avatar-lg" id="setPatternAvatar"></div>
+      <h2 id="setPatternName"></h2>
+      <p id="setPatternStep">Draw a pattern to secure your account</p>
+    </div>
+    <div class="pattern-grid" id="setPatternGrid"></div>
+    <div class="hint" id="setPatternHint">Connect at least 4 dots</div>
+  </div>
+
+  <!-- UNLOCK: biometric -->
+  <div class="screen" id="screen-unlock-bio">
+    <div class="lock-header">
+      <div class="avatar-lg" id="unlockBioAvatar"></div>
+      <h2 id="unlockBioName">Hi</h2>
+      <p>Confirm it's you</p>
+    </div>
+    <div class="fp-wrap">
+      <div class="fp-circle">👆</div>
+      <div class="fp-status" id="bioStatusText">Tap below to verify with your phone's security</div>
+      <button class="welcome-btn" id="bioVerifyBtn" style="background:var(--lav-700);color:#fff;margin-top:6px;">Verify</button>
+      <button class="use-pattern-link" id="fallbackToPatternBtn">Use pattern instead</button>
+    </div>
+  </div>
+
+  <!-- UNLOCK: pattern -->
+  <div class="screen" id="screen-unlock">
+    <div class="lock-header">
+      <div class="avatar-lg" id="unlockAvatar"></div>
+      <h2 id="unlockName">Hi</h2>
+      <p>Draw your pattern to continue</p>
+    </div>
+    <div class="pattern-grid" id="unlockGrid"></div>
+    <div class="hint" id="unlockHint">&nbsp;</div>
+    <button class="switch-user-link" id="switchUserLink">Not you? Switch account</button>
+  </div>
+
+  <!-- STAFF DASHBOARD -->
+  <div class="screen" id="screen-staff-dash">
+    <div class="db-top">
+      <button class="avatar-btn" id="staffAvatarBtn" style="right:60px;"></button>
+      <button class="avatar-btn" id="staffNotifBtn" style="font-size:16px;">🔔<span id="notifBadge" style="display:none;position:absolute;top:-3px;right:-3px;background:var(--danger);color:#fff;border-radius:10px;font-size:8px;min-width:15px;height:15px;align-items:center;justify-content:center;font-weight:700;"></span></button>
+      <div class="greet" id="staffDateLabel">Today</div>
+      <h2 id="staffGreetName">Your day</h2>
+      <div class="stats">
+        <div class="stat"><b id="staffStatAssigned">0</b><span>Assigned</span></div>
+        <div class="stat"><b id="staffStatVisits">0</b><span>Visits</span></div>
+        <div class="stat"><b id="staffStatNotes">0</b><span>Notes</span></div>
+      </div>
+    </div>
+    <div class="main-scroll">
+      <button class="addbtn" id="staffAddBtn">＋ Add entry</button>
+      <div class="sectiontitle">Assigned to you</div>
+      <div class="entry-list" id="staffAssignedList"></div>
+      <div class="sectiontitle">Your entries today</div>
+      <div class="entry-list" id="staffEntryList"></div>
+    </div>
+    <div class="navbar">
+      <button class="navitem active" data-nav="staff-dash"><span class="navicon">⌂</span>Home</button>
+      <button class="navitem" data-nav="staff-history"><span class="navicon">🕐</span>History</button>
+      <button class="navitem" data-nav="staff-profile"><span class="navicon">◍</span>Profile</button>
+      <button class="navitem" data-nav="staff-settings"><span class="navicon">⚙</span>Settings</button>
+    </div>
+  </div>
+
+  <!-- STAFF NOTIFICATIONS -->
+  <div class="screen" id="screen-staff-notifs">
+    <div class="form-top"><button class="x" data-close="staff-dash">✕</button><h2>Notifications</h2></div>
+    <div class="main-scroll" id="staffNotifList"></div>
+  </div>
+
+  <!-- STAFF ADD ENTRY -->
+  <div class="screen" id="screen-add-entry">
+    <div class="form-top"><button class="x" data-close="staff-dash">✕</button><h2>New entry</h2></div>
+    <div class="form-body">
+      <div>
+        <label>Type</label>
+        <div class="type-row" id="entryTypeRow">
+          <button class="typebtn active" data-type="visit">Visit</button>
+          <button class="typebtn" data-type="note">Note</button>
+        </div>
+      </div>
+      <div><label>Customer / party name (optional)</label><input class="field" id="entryCustomer" style="margin-bottom:0;" placeholder="e.g. Sharma Traders"></div>
+      <div><label>What happened</label><textarea class="field" id="entryDetail" style="margin-bottom:0;" placeholder="Short description..."></textarea></div>
+      <button class="savebtn" id="entrySaveBtn">Save entry</button>
+    </div>
+  </div>
+
+  <!-- STAFF HISTORY -->
+  <div class="screen" id="screen-staff-history">
+    <div class="p-top" style="padding:20px;text-align:left;">
+      <button class="backarrow" data-close="staff-dash" style="position:static;margin-bottom:10px;">← Back</button>
+      <h2>My history</h2>
+      <p id="historySubtitle">All your past entries</p>
+    </div>
+    <div class="main-scroll" id="staffHistoryList"></div>
+    <div class="navbar">
+      <button class="navitem" data-nav="staff-dash"><span class="navicon">⌂</span>Home</button>
+      <button class="navitem active" data-nav="staff-history"><span class="navicon">🕐</span>History</button>
+      <button class="navitem" data-nav="staff-profile"><span class="navicon">◍</span>Profile</button>
+      <button class="navitem" data-nav="staff-settings"><span class="navicon">⚙</span>Settings</button>
+    </div>
+  </div>
+
+  <!-- STAFF PROFILE -->
+  <div class="screen" id="screen-staff-profile">
+    <div class="p-top">
+      <button class="backarrow" data-close="staff-dash">←</button>
+      <div class="p-avatar" id="profileAvatar"></div>
+      <h2 id="profileName"></h2>
+      <p id="profileRole"></p>
+    </div>
+    <div class="stats-strip">
+      <div class="stat2"><b id="pStatVisits">0</b><span>Visits</span></div>
+      <div class="stat2"><b id="pStatAssigned">0</b><span>Assigned</span></div>
+      <div class="stat2"><b id="pStatOnTime">–</b><span>On-time</span></div>
+    </div>
+    <div class="main-scroll">
+      <div class="sectiontitle">Security</div>
+      <div class="row-list">
+        <button class="row" id="changeSecurityBtn"><div class="row-icon">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="currentSecMethod">Pattern</div></div><span class="chev">›</span></button>
+      </div>
+      <div class="sectiontitle">Account</div>
+      <div class="row-list">
+        <button class="row danger" id="logoutBtn"><div class="row-icon">↪</div><div><div class="t">Log out</div><div class="m">Switch to another account</div></div></button>
+      </div>
+    </div>
+    <div class="navbar">
+      <button class="navitem" data-nav="staff-dash"><span class="navicon">⌂</span>Home</button>
+      <button class="navitem" data-nav="staff-history"><span class="navicon">🕐</span>History</button>
+      <button class="navitem active" data-nav="staff-profile"><span class="navicon">◍</span>Profile</button>
+      <button class="navitem" data-nav="staff-settings"><span class="navicon">⚙</span>Settings</button>
+    </div>
+  </div>
+
+  <!-- STAFF SETTINGS -->
+  <div class="screen" id="screen-staff-settings">
+    <div class="form-top"><button class="x" data-close="staff-dash">✕</button><h2>Settings</h2></div>
+    <div class="main-scroll">
+      <div class="sectiontitle">Notifications</div>
+      <div class="row-list">
+        <div class="row"><div class="row-icon">🔔</div><div class="t">Assigned work alerts</div><button class="toggle on" data-toggle="notifAssigned"></button></div>
+        <div class="row"><div class="row-icon">⏰</div><div class="t">Due-date reminders</div><button class="toggle on" data-toggle="notifDue"></button></div>
+      </div>
+      <div class="sectiontitle">Data</div>
+      <div class="row-list">
+        <div class="row"><div class="row-icon">☁️</div><div><div class="t">Sync status</div><div class="m" id="syncStatusText" style="color:var(--ok);">Connected</div></div></div>
+        <div class="row"><div class="row-icon">ℹ️</div><div><div class="t">About Branch Log</div><div class="m">Version 2.0</div></div></div>
+      </div>
+    </div>
+    <div class="navbar">
+      <button class="navitem" data-nav="staff-dash"><span class="navicon">⌂</span>Home</button>
+      <button class="navitem" data-nav="staff-history"><span class="navicon">🕐</span>History</button>
+      <button class="navitem" data-nav="staff-profile"><span class="navicon">◍</span>Profile</button>
+      <button class="navitem active" data-nav="staff-settings"><span class="navicon">⚙</span>Settings</button>
+    </div>
+  </div>
+
+  <!-- MANAGER OVERVIEW -->
+  <div class="screen" id="screen-mgr-overview">
+    <div class="db-top mgr-top">
+      <button class="avatar-btn gold" id="mgrAvatarBtn">D</button>
+      <div class="greet" id="mgrDateLabel">Today</div>
+      <h2 id="mgrBranchLabel">Branch overview</h2>
+      <div class="stats">
+        <div class="stat"><b id="mgrStatEntries">0</b><span>Entries</span></div>
+        <div class="stat"><b id="mgrStatPending">0</b><span>Pending</span></div>
+        <div class="stat"><b id="mgrStatStaff">0</b><span>Staff</span></div>
+      </div>
+    </div>
+    <div class="main-scroll">
+      <div class="filters" id="mgrFilters">
+        <button class="chip active" data-filter="all">All</button>
+        <button class="chip" data-filter="assigned">Assigned</button>
+        <button class="chip" data-filter="visit">Visits</button>
+        <button class="chip" data-filter="note">Notes</button>
+      </div>
+      <div class="person-row" id="mgrPersonRow"></div>
+      <button class="addbtn" id="mgrAssignBtn">＋ Assign work to staff</button>
+      <button class="addbtn" id="mgrBroadcastBtn" style="background:var(--gold);">📢 Send notification</button>
+      <div class="sectiontitle">Live feed</div>
+      <div class="entry-list" id="mgrFeedList"></div>
+    </div>
+    <div class="navbar mgr">
+      <button class="navitem active" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
+      <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
+      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: STAFF DRILL-DOWN -->
+  <div class="screen" id="screen-mgr-drilldown">
+    <div class="p-top">
+      <button class="backarrow" data-close="mgr-overview">←</button>
+      <div class="p-avatar" id="ddAvatar"></div>
+      <h2 id="ddName"></h2>
+      <p id="ddRole"></p>
+    </div>
+    <div class="stats-strip">
+      <div class="stat2"><b id="ddStatVisits">0</b><span>Visits</span></div>
+      <div class="stat2"><b id="ddStatAssigned">0</b><span>Assigned</span></div>
+      <div class="stat2"><b id="ddStatPending">0</b><span>Pending</span></div>
+    </div>
+    <div class="main-scroll">
+      <button class="addbtn" id="ddAssignBtn" style="margin-top:14px;">＋ Assign new work</button>
+      <div class="sectiontitle">Recent entries</div>
+      <div class="entry-list" id="ddEntryList"></div>
+    </div>
+  </div>
+
+  <!-- MANAGER: ASSIGN WORK -->
+  <div class="screen" id="screen-assign">
+    <div class="form-top"><button class="x" data-close="mgr-overview">✕</button><h2>Assign work</h2></div>
+    <div class="form-body">
+      <div>
+        <label>Assign to</label>
+        <div class="staffpick" id="assignStaffPick"></div>
+      </div>
+      <div><label>Task</label><textarea class="field" id="assignTask" style="margin-bottom:0;" placeholder="Describe the task..."></textarea></div>
+      <div><label>Due date</label><input class="field" type="date" id="assignDue" style="margin-bottom:0;"></div>
+      <button class="savebtn" id="assignSaveBtn">Assign task</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: PENDING -->
+  <div class="screen" id="screen-mgr-pending">
+    <div class="db-top mgr-top" style="border-radius:0 0 22px 22px;">
+      <h2>Pending work</h2>
+      <p class="greet" id="pendingSubtitle">Across all staff</p>
+    </div>
+    <div class="main-scroll">
+      <div class="pd-summary">
+        <div class="pd-card total"><b id="pdTotal">0</b><span>Total</span></div>
+        <div class="pd-card overdue"><b id="pdOverdue">0</b><span>Overdue</span></div>
+        <div class="pd-card today"><b id="pdToday">0</b><span>Due today</span></div>
+      </div>
+      <div id="pendingListWrap"></div>
+    </div>
+    <div class="navbar mgr">
+      <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
+      <button class="navitem active" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
+      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: MANAGE STAFF -->
+  <div class="screen" id="screen-mgr-staff">
+    <div class="db-top mgr-top" style="border-radius:0 0 22px 22px;">
+      <h2>Manage staff</h2>
+      <p class="greet" id="staffCountLabel">0 people</p>
+    </div>
+    <div class="main-scroll">
+      <button class="addbtn" id="addStaffBtn">＋ Add staff member</button>
+      <div class="sectiontitle">Team</div>
+      <div id="staffListWrap"></div>
+    </div>
+    <div class="navbar mgr">
+      <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
+      <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
+      <button class="navitem active" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: ADD STAFF (generates invite link) -->
+  <div class="screen" id="screen-add-staff">
+    <div class="form-top"><button class="x" data-close="mgr-staff">✕</button><h2>Add staff member</h2></div>
+    <div class="form-body" id="addStaffFormBody">
+      <div><label>Full name</label><input class="field" id="newStaffName" style="margin-bottom:0;" placeholder="e.g. Kavya R."></div>
+      <div>
+        <label>Role</label>
+        <div class="staffpick" id="newStaffRolePick">
+          <button class="pickchip" data-role="Asst. Branch Manager">Asst. Branch Manager</button>
+          <button class="pickchip" data-role="Officer">Officer</button>
+          <button class="pickchip sel" data-role="CSA">CSA</button>
+          <button class="pickchip" data-role="Clerk">Clerk</button>
+        </div>
+      </div>
+      <button class="savebtn" id="newStaffSaveBtn">Generate invite link</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: INVITE LINK RESULT -->
+  <div class="screen" id="screen-invite-result">
+    <div class="form-top"><button class="x" data-close="mgr-staff">✕</button><h2>Invite ready</h2></div>
+    <div class="form-body">
+      <div class="empty-state" style="padding:6px 0 14px;text-align:left;color:var(--ink-soft);font-size:12.5px;">
+        Send this link to <b id="inviteResultName" style="color:var(--ink);"></b> — it opens straight to their setup, already knowing their name and branch.
+      </div>
+      <div class="link-box" id="inviteLinkBox"></div>
+      <button class="copy-btn" id="copyInviteBtn">Copy link</button>
+      <button class="ghost-btn" data-close="mgr-staff">Done</button>
+    </div>
+  </div>
+
+  <!-- MANAGER: MORE (profile/settings) -->
+  <div class="screen" id="screen-mgr-profile">
+    <div class="p-top">
+      <div class="p-avatar" id="mgrProfileAvatar">D</div>
+      <h2 id="mgrProfileName">Manager</h2>
+      <p id="mgrProfileBranch">Branch Manager</p>
+    </div>
+    <div class="main-scroll">
+      <div class="sectiontitle">Reports</div>
+      <div class="row-list">
+        <div class="row"><div class="row-icon">📊</div><div><div class="t">Weekly summary</div><div class="m" id="weeklyTotalLabel">–</div></div></div>
+      </div>
+      <div class="sectiontitle">Security</div>
+      <div class="row-list">
+        <button class="row" id="mgrChangeSecurityBtn"><div class="row-icon">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="mgrCurrentSecMethod">Pattern</div></div><span class="chev">›</span></button>
+      </div>
+      <div class="sectiontitle">Account</div>
+      <div class="row-list">
+        <button class="row danger" id="mgrLogoutBtn"><div class="row-icon">↪</div><div><div class="t">Log out</div></div></button>
+      </div>
+    </div>
+    <div class="navbar mgr">
+      <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
+      <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
+      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      <button class="navitem active" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
+    </div>
+  </div>
+
+  <!-- BROADCAST -->
+  <div class="screen" id="screen-broadcast">
+    <div class="form-top"><button class="x" data-close="mgr-overview">✕</button><h2>Send notification</h2></div>
+    <div class="form-body">
+      <div><label>Send to</label><div class="staffpick" id="broadcastPick"></div></div>
+      <div><label>Message</label><textarea class="field" id="broadcastMsg" style="margin-bottom:0;" placeholder="Type your message..."></textarea></div>
+      <button class="savebtn" id="broadcastSendBtn">Send</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-sheet" id="modalSheet"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, setDoc, addDoc, getDocs, getDoc,
+  query, where, orderBy, onSnapshot, updateDoc, deleteDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAR6JDl8RBBL-MG6r-eaznQLWy8EMXQrWA",
+  authDomain: "branch-log.firebaseapp.com",
+  projectId: "branch-log",
+  storageBucket: "branch-log.firebasestorage.app",
+  messagingSenderId: "1022958210752",
+  appId: "1:1022958210752:web:1ceeb353c1e1976f66a725",
+  measurementId: "G-RJWVLH05RW"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+/* ================= State ================= */
+let branchId = localStorage.getItem('bl_branchId') || null;
+let branchData = null;
+let currentUserId = localStorage.getItem('bl_currentUserId') || null;
+let currentUser = null;
+let staffList = [];
+let entries = [];
+let inviteCode = null;       // set if URL has ?invite=
+let inviteRecord = null;     // the invite doc, once fetched
+let joiningStaffId = null;   // staff id created/matched during join flow
+let mgrFilterState = 'all';
+let patternPendingFirst = null;
+let assignSelectedIds = new Set();
+let drilldownStaffId = null;
+let broadcastSelected = new Set(['__all__']);
+let notifPrefs = JSON.parse(localStorage.getItem('bl_notifPrefs') || '{"notifAssigned":true,"notifDue":true}');
+
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+function showScreen(id){
+  $$('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + id);
+  if(el) el.classList.add('active');
+  window.scrollTo(0,0);
+}
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function initials(name){
+  return (name||'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+}
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+function genId(prefix){
+  return prefix + '-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
+}
+
+/* ================= Boot ================= */
+async function boot(){
+  const params = new URLSearchParams(window.location.search);
+  inviteCode = params.get('invite');
+
+  setTimeout(async () => {
+    if(inviteCode){
+      await handleInviteLaunch();
+      return;
+    }
+    if(branchId && currentUserId){
+      await loadBranch(branchId);  // now waits for first staff snapshot internally
+      const secMethod = localStorage.getItem('bl_secMethod_' + currentUserId);
+      if(secMethod === 'webauthn'){
+        goToUnlockBio();
+      } else if(secMethod === 'pattern'){
+        goToUnlock(currentUserId);
+      } else {
+        goToChooseSecurity(false);
+      }
+      return;
+    }
+    showScreen('welcome');
+  }, 1000);
+}
+
+$('#welcomeStartBtn').onclick = () => showScreen('create-branch');
+
+/* ================= Create branch (first-run wizard) ================= */
+$('#createBranchBtn').onclick = async () => {
+  const bName = $('#branchNameInput').value.trim();
+  const aName = $('#adminNameInput').value.trim();
+  if(!bName || !aName){ toast('Please fill both fields'); return; }
+  const newBranchId = genId('branch');
+  const managerId = genId('mgr');
+  await setDoc(doc(db, 'branches', newBranchId), {
+    name: bName, createdAt: serverTimestamp()
+  });
+  await setDoc(doc(db, 'branches', newBranchId, 'staff', managerId), {
+    name: aName, role: 'Branch Manager', isManager: true, active: true, createdAt: serverTimestamp()
+  });
+  branchId = newBranchId;
+  currentUserId = managerId;
+  localStorage.setItem('bl_branchId', branchId);
+  localStorage.setItem('bl_currentUserId', currentUserId);
+  await loadBranch(branchId);
+  toast('Branch created');
+  goToChooseSecurity(true);
+};
+
+/* ================= Invite (staff join flow) ================= */
+async function handleInviteLaunch(){
+  const invSnap = await getDoc(doc(db, 'invites', inviteCode));
+  if(!invSnap.exists()){
+    showScreen('welcome');
+    toast('Invite link not found or expired');
+    return;
+  }
+  inviteRecord = invSnap.data();
+  branchId = inviteRecord.branchId;
+  await loadBranch(branchId);
+  $('#inviteBannerDetail').textContent = `${inviteRecord.role} at ${branchData?.name || 'this branch'}`;
+  $('#inviteNameInput').value = inviteRecord.name || '';
+  showScreen('join-invite');
+}
+$('#joinBranchBtn').onclick = async () => {
+  const name = $('#inviteNameInput').value.trim();
+  if(!name){ toast('Enter your name'); return; }
+  const staffId = inviteRecord.staffId;
+  await updateDoc(doc(db, 'branches', branchId, 'staff', staffId), {
+    name, active: true, joined: true
+  });
+  await deleteDoc(doc(db, 'invites', inviteCode)).catch(()=>{});
+  currentUserId = staffId;
+  localStorage.setItem('bl_branchId', branchId);
+  localStorage.setItem('bl_currentUserId', currentUserId);
+  history.replaceState(null, '', window.location.pathname);
+  toast('Welcome to the team');
+  goToChooseSecurity(true);
+};
+
+/* ================= Load branch data + listeners ================= */
+async function loadBranch(bId){
+  const bSnap = await getDoc(doc(db, 'branches', bId));
+  branchData = bSnap.exists() ? bSnap.data() : { name: 'Branch' };
+  await listenStaffOnce();  // ensure staffList/currentUser populated before any screen renders
+  listenStaff();
+  listenEntries();
+  listenNotifications();
+}
+function listenStaffOnce(){
+  // resolves once with the first snapshot, so currentUser is guaranteed set before we navigate
+  return new Promise((resolve) => {
+    const unsub = onSnapshot(collection(db, 'branches', branchId, 'staff'), (snap) => {
+      staffList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.active !== false);
+      if(currentUserId){
+        currentUser = staffList.find(s => s.id === currentUserId) || currentUser;
+      }
+      resolve();
+    });
+  });
+}
+function listenStaff(){
+  onSnapshot(collection(db, 'branches', branchId, 'staff'), (snap) => {
+    staffList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.active !== false);
+    if(currentUserId){
+      currentUser = staffList.find(s => s.id === currentUserId) || currentUser;
+    }
+    renderAll();
+  });
+}
+function listenEntries(){
+  const q = query(collection(db, 'branches', branchId, 'entries'), orderBy('createdAt', 'desc'));
+  onSnapshot(q, (snap) => {
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+  });
+}
+let notifications = [];
+function listenNotifications(){
+  const q = query(collection(db, 'branches', branchId, 'notifications'), orderBy('createdAt', 'desc'));
+  onSnapshot(q, (snap) => {
+    notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+    updateNotifBadge();
+  });
+}
+function myNotifications(){
+  if(!currentUserId) return [];
+  return notifications.filter(n => n.targets && n.targets.includes(currentUserId));
+}
+function updateNotifBadge(){
+  if(!currentUser || currentUser.isManager) return;
+  const mine = myNotifications();
+  const seenIds = JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]');
+  const unread = mine.filter(n => !seenIds.includes(n.id)).length;
+  const badge = $('#notifBadge');
+  if(badge){
+    badge.style.display = unread > 0 ? 'flex' : 'none';
+    badge.textContent = unread;
+  }
+}
+
+/* ================= Security: choose method ================= */
+function goToChooseSecurity(firstTime){
+  showScreen('choose-security');
+  $('#secAvatar').className = 'avatar-lg' + (currentUser?.isManager ? ' mgr':'');
+  $('#secAvatar').textContent = initials(currentUser?.name || '');
+  $('#secName').textContent = firstTime ? `Hi, ${currentUser?.name?.split(' ')[0] || ''}` : 'Change unlock method';
+  const hasWebAuthn = window.PublicKeyCredential !== undefined;
+  $('#useBiometricBtn').style.display = hasWebAuthn ? 'flex' : 'none';
+}
+$('#usePatternBtn').onclick = () => goToSetPattern(true);
+$('#useBiometricBtn').onclick = async () => {
+  try{
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: new Uint8Array(32),
+        rp: { name: "Branch Log" },
+        user: {
+          id: new TextEncoder().encode(currentUserId),
+          name: currentUser?.name || 'user',
+          displayName: currentUser?.name || 'user'
+        },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 60000
+      }
+    });
+    if(cred){
+      localStorage.setItem('bl_secMethod_' + currentUserId, 'webauthn');
+      localStorage.setItem('bl_credId_' + currentUserId, cred.id);
+      toast('Phone security enabled');
+      goToDashboard();
+    }
+  }catch(err){
+    console.error(err);
+    toast('Could not set up phone security — try pattern instead');
+  }
+};
+
+/* ================= Pattern grid logic (shared) ================= */
+function buildPatternGrid(gridEl, onComplete){
+  gridEl.innerHTML = '';
+  const dots = [];
+  for(let i=0;i<9;i++){
+    const d = document.createElement('div');
+    d.className = 'pdot';
+    d.dataset.idx = i;
+    gridEl.appendChild(d);
+    dots.push(d);
+  }
+  let drawing = false;
+  let path = [];
+  function dotAtPoint(x,y){
+    for(const d of dots){
+      const r = d.getBoundingClientRect();
+      const cx = r.left + r.width/2, cy = r.top + r.height/2;
+      if(Math.hypot(x-cx, y-cy) < 26) return d;
+    }
+    return null;
+  }
+  function reset(){ path = []; dots.forEach(d => d.classList.remove('active','error')); }
+  function addDot(d){
+    const idx = parseInt(d.dataset.idx);
+    if(!path.includes(idx)){ path.push(idx); d.classList.add('active'); }
+  }
+  function pointerDown(e){
+    drawing = true; reset();
+    const pt = e.touches ? e.touches[0] : e;
+    const d = dotAtPoint(pt.clientX, pt.clientY);
+    if(d) addDot(d);
+  }
+  function pointerMove(e){
+    if(!drawing) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const d = dotAtPoint(pt.clientX, pt.clientY);
+    if(d) addDot(d);
+  }
+  function pointerUp(){
+    if(!drawing) return;
+    drawing = false;
+    if(path.length >= 4){ onComplete([...path], reset); }
+    else {
+      dots.forEach(d => d.classList.add('error'));
+      setTimeout(reset, 400);
+      onComplete(null, reset);
+    }
+  }
+  gridEl.addEventListener('mousedown', pointerDown);
+  gridEl.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  gridEl.addEventListener('touchstart', pointerDown, {passive:true});
+  gridEl.addEventListener('touchmove', pointerMove, {passive:true});
+  gridEl.addEventListener('touchend', pointerUp);
+  return { reset };
+}
+
+function goToSetPattern(isFirstTime){
+  showScreen('setpattern');
+  $('#setPatternAvatar').className = 'avatar-lg' + (currentUser?.isManager ? ' mgr':'');
+  $('#setPatternAvatar').textContent = initials(currentUser?.name || '');
+  $('#setPatternName').textContent = isFirstTime ? `Hi, ${currentUser?.name?.split(' ')[0]}` : 'Change pattern';
+  $('#setPatternStep').textContent = 'Draw a new pattern to secure your account';
+  $('#setPatternHint').textContent = 'Connect at least 4 dots';
+  patternPendingFirst = null;
+
+  buildPatternGrid($('#setPatternGrid'), (path, resetFn) => {
+    if(!path){
+      $('#setPatternHint').textContent = 'Too short — connect at least 4 dots';
+      $('#setPatternHint').classList.add('err');
+      setTimeout(()=>{ $('#setPatternHint').classList.remove('err'); resetFn(); }, 500);
+      return;
+    }
+    if(!patternPendingFirst){
+      patternPendingFirst = path;
+      $('#setPatternStep').textContent = 'Draw it again to confirm';
+      $('#setPatternHint').textContent = 'Confirm your pattern';
+      setTimeout(resetFn, 350);
+    } else {
+      if(JSON.stringify(path) === JSON.stringify(patternPendingFirst)){
+        localStorage.setItem('bl_pattern_' + currentUserId, JSON.stringify(path));
+        localStorage.setItem('bl_secMethod_' + currentUserId, 'pattern');
+        toast('Pattern saved');
+        goToDashboard();
+      } else {
+        $('#setPatternHint').textContent = "Didn't match — try again";
+        $('#setPatternHint').classList.add('err');
+        patternPendingFirst = null;
+        $('#setPatternStep').textContent = 'Draw a new pattern to secure your account';
+        setTimeout(()=>{ $('#setPatternHint').classList.remove('err'); $('#setPatternHint').textContent='Connect at least 4 dots'; resetFn(); }, 700);
+      }
+    }
+  });
+}
+
+/* ================= Unlock: biometric ================= */
+function goToUnlockBio(){
+  currentUser = staffList.find(s => s.id === currentUserId) || currentUser;
+  showScreen('unlock-bio');
+  $('#unlockBioAvatar').className = 'avatar-lg' + (currentUser?.isManager ? ' mgr':'');
+  $('#unlockBioAvatar').textContent = initials(currentUser?.name || '');
+  $('#unlockBioName').textContent = `Hi, ${currentUser?.name?.split(' ')[0] || ''}`;
+  $('#bioStatusText').textContent = "Tap below to verify with your phone's security";
+}
+$('#bioVerifyBtn').onclick = async () => {
+  const credId = localStorage.getItem('bl_credId_' + currentUserId);
+  try{
+    $('#bioStatusText').textContent = 'Verifying…';
+    const options = {
+      challenge: new Uint8Array(32),
+      timeout: 60000,
+      userVerification: "required"
+    };
+    if(credId){
+      options.allowCredentials = [{ type: "public-key", id: Uint8Array.from(atob(credId.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0)) }];
+    }
+    await navigator.credentials.get({ publicKey: options });
+    goToDashboard();
+  }catch(err){
+    console.error(err);
+    $('#bioStatusText').textContent = "Couldn't verify — try again or use pattern";
+  }
+};
+$('#fallbackToPatternBtn').onclick = () => goToUnlock(currentUserId);
+
+/* ================= Unlock: pattern ================= */
+function goToUnlock(userId){
+  currentUserId = userId;
+  currentUser = staffList.find(s => s.id === userId) || currentUser || { name:'', isManager:false };
+  showScreen('unlock');
+  $('#unlockAvatar').className = 'avatar-lg' + (currentUser.isManager ? ' mgr':'');
+  $('#unlockAvatar').textContent = initials(currentUser.name);
+  $('#unlockName').textContent = `Hi, ${(currentUser.name||'').split(' ')[0]}`;
+  $('#unlockHint').textContent = '\u00A0';
+
+  buildPatternGrid($('#unlockGrid'), (path, resetFn) => {
+    const saved = JSON.parse(localStorage.getItem('bl_pattern_' + userId) || 'null');
+    if(path && saved && JSON.stringify(path) === JSON.stringify(saved)){
+      goToDashboard();
+    } else {
+      $('#unlockHint').textContent = 'Incorrect pattern — try again';
+      $('#unlockHint').classList.add('err');
+      setTimeout(()=>{ $('#unlockHint').classList.remove('err'); resetFn(); }, 500);
+    }
+  });
+}
+$('#switchUserLink').onclick = () => {
+  currentUserId=null; localStorage.removeItem('bl_currentUserId');
+  toast('Ask your manager for a new invite link to switch accounts');
+};
+
+/* ================= Dashboard router ================= */
+function goToDashboard(){
+  localStorage.setItem('bl_branchId', branchId);
+  localStorage.setItem('bl_currentUserId', currentUserId);
+  if(currentUser?.isManager) showScreen('mgr-overview');
+  else showScreen('staff-dash');
+  renderAll();
+}
+
+/* ================= Nav wiring ================= */
+$$('[data-nav]').forEach(btn => {
+  btn.onclick = () => {
+    const target = btn.dataset.nav;
+    showScreen(target);
+    $$('.navitem').forEach(n => n.classList.remove('active'));
+    $$(`[data-nav="${target}"]`).forEach(n => n.classList.add('active'));
+    renderAll();
+  };
+});
+$$('[data-close]').forEach(btn => { btn.onclick = () => { showScreen(btn.dataset.close); renderAll(); }; });
+$('#staffAvatarBtn').onclick = () => { showScreen('staff-profile'); renderAll(); };
+$('#mgrAvatarBtn').onclick = () => { showScreen('mgr-profile'); renderAll(); };
+$('#staffNotifBtn').onclick = () => {
+  showScreen('staff-notifs');
+  renderStaffNotifs();
+  const mine = myNotifications();
+  const seenIds = new Set(JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]'));
+  mine.forEach(n => seenIds.add(n.id));
+  localStorage.setItem('bl_notifSeen_' + currentUserId, JSON.stringify([...seenIds]));
+  updateNotifBadge();
+};
+function renderStaffNotifs(){
+  const mine = myNotifications();
+  const wrap = $('#staffNotifList');
+  if(mine.length === 0){
+    wrap.innerHTML = '<div class="empty-state">No notifications yet.</div>';
+    return;
+  }
+  wrap.innerHTML = `<div class="entry-list" style="padding-top:14px;">` + mine.map(n => `
+    <div class="entry">
+      <div class="row-icon" style="background:var(--lav-100);">📢</div>
+      <div class="body"><div class="t">Message from ${escapeHtml(staffName(n.from) || 'Manager')}</div>
+      <div class="m">${escapeHtml(n.message||'')}</div>
+      <div class="m" style="margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div></div>
+    </div>`).join('') + `</div>`;
+}
+
+/* ================= Helpers ================= */
+function fmtTime(ts){
+  if(!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('en-IN', { hour:'numeric', minute:'2-digit' });
+}
+function isToday(ts){
+  if(!ts) return false;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toDateString() === new Date().toDateString();
+}
+function fmtDate(ts){
+  if(!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long' });
+}
+function dueStatus(dueStr){
+  if(!dueStr) return {label:'No due date', cls:'future'};
+  const due = new Date(dueStr + 'T23:59:59');
+  const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+  if(due < new Date(new Date().setHours(0,0,0,0))) return {label:'Overdue', cls:'late'};
+  if(due <= todayEnd) return {label:'Today', cls:'today2'};
+  return {label: due.toLocaleDateString('en-IN',{day:'numeric',month:'short'}), cls:'future'};
+}
+function entryBadge(type){
+  if(type === 'assigned') return '<span class="badge assigned">Assigned</span>';
+  if(type === 'visit') return '<span class="badge visit">Visit</span>';
+  return '<span class="badge note">Note</span>';
+}
+function staffName(id){
+  const s = staffList.find(x => x.id === id);
+  return s ? s.name.split(' ')[0] : '—';
+}
+
+/* ================= Render: Staff dashboard ================= */
+function renderStaffDash(){
+  if(!currentUser || currentUser.isManager) return;
+  $('#staffGreetName').textContent = `${(currentUser.name||'').split(' ')[0]}'s day`;
+  const myEntries = entries.filter(e => e.staffId === currentUserId);
+  const todayEntries = myEntries.filter(e => isToday(e.createdAt) && e.type !== 'assigned');
+  const assignedToMe = entries.filter(e => e.type === 'assigned' && e.assignedTo === currentUserId);
+  const pendingAssigned = assignedToMe.filter(e => e.status !== 'done');
+  const visits = todayEntries.filter(e => e.type === 'visit').length;
+  const notes = todayEntries.filter(e => e.type === 'note').length;
+
+  $('#staffStatAssigned').textContent = pendingAssigned.length;
+  $('#staffStatVisits').textContent = visits;
+  $('#staffStatNotes').textContent = notes;
+  $('#staffAvatarBtn').textContent = initials(currentUser.name);
+
+  const assignedList = $('#staffAssignedList');
+  if(assignedToMe.length === 0){
+    assignedList.innerHTML = '<div class="empty-state">No work assigned right now.</div>';
+  } else {
+    assignedList.innerHTML = assignedToMe.slice(0,10).map(e => `
+      <div class="entry">
+        <button class="check ${e.status==='done'?'done':''}" data-toggle-task="${e.id}"></button>
+        <div class="body"><div class="t">${escapeHtml(e.task||'')}</div>
+        <div class="m">By ${escapeHtml(staffName(e.createdBy))} ${e.dueDate ? '· Due '+e.dueDate : ''}</div></div>
+      </div>`).join('');
+    $$('[data-toggle-task]', assignedList).forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.toggleTask;
+        const e = entries.find(x => x.id === id);
+        await updateDoc(doc(db,'branches',branchId,'entries',id), { status: e.status==='done' ? 'pending' : 'done' });
+      };
+    });
+  }
+  const entryList = $('#staffEntryList');
+  if(todayEntries.length === 0){
+    entryList.innerHTML = '<div class="empty-state">No entries logged yet today.</div>';
+  } else {
+    entryList.innerHTML = todayEntries.map(e => `
+      <div class="entry">${entryBadge(e.type)}
+        <div class="body"><div class="t">${escapeHtml(e.customer ? e.customer+' — ' : '')}${escapeHtml(e.detail||'')}</div>
+        <div class="m">${fmtTime(e.createdAt)}</div></div>
+      </div>`).join('');
+  }
+}
+
+/* ================= Add entry ================= */
+let selectedEntryType = 'visit';
+$$('#entryTypeRow .typebtn').forEach(btn => {
+  btn.onclick = () => {
+    $$('#entryTypeRow .typebtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedEntryType = btn.dataset.type;
+  };
+});
+$('#staffAddBtn').onclick = () => {
+  $('#entryCustomer').value = ''; $('#entryDetail').value = ''; selectedEntryType = 'visit';
+  $$('#entryTypeRow .typebtn').forEach(b => b.classList.toggle('active', b.dataset.type==='visit'));
+  showScreen('add-entry');
+};
+$('#entrySaveBtn').onclick = async () => {
+  const detail = $('#entryDetail').value.trim();
+  if(!detail){ toast('Please add a description'); return; }
+  await addDoc(collection(db,'branches',branchId,'entries'), {
+    type: selectedEntryType, staffId: currentUserId,
+    customer: $('#entryCustomer').value.trim(), detail, createdAt: serverTimestamp()
+  });
+  toast('Entry saved');
+  showScreen('staff-dash');
+};
+
+/* ================= Staff history ================= */
+function renderStaffHistory(){
+  if(!currentUser) return;
+  const myEntries = entries.filter(e => e.staffId === currentUserId || (e.type==='assigned' && e.assignedTo===currentUserId));
+  const wrap = $('#staffHistoryList');
+  if(myEntries.length === 0){ wrap.innerHTML = '<div class="empty-state">No entries yet.</div>'; return; }
+  const groups = {};
+  myEntries.forEach(e => {
+    const key = fmtDate(e.createdAt) || 'Undated';
+    groups[key] = groups[key] || [];
+    groups[key].push(e);
+  });
+  let html = '';
+  Object.keys(groups).forEach(day => {
+    html += `<div class="sectiontitle">${day}</div><div class="entry-list">`;
+    groups[day].forEach(e => {
+      if(e.type === 'assigned'){
+        html += `<div class="entry"><span class="check ${e.status==='done'?'done':''}" style="display:inline-flex;"></span>
+          <div class="body"><div class="t">${escapeHtml(e.task||'')}</div><div class="m">${e.status==='done'?'Done':'Pending'} ${fmtTime(e.createdAt)}</div></div></div>`;
+      } else {
+        html += `<div class="entry">${entryBadge(e.type)}<div class="body"><div class="t">${escapeHtml(e.customer?e.customer+' — ':'')}${escapeHtml(e.detail||'')}</div><div class="m">${fmtTime(e.createdAt)}</div></div></div>`;
+      }
+    });
+    html += `</div>`;
+  });
+  wrap.innerHTML = html;
+}
+
+/* ================= Staff profile ================= */
+function renderStaffProfile(){
+  if(!currentUser) return;
+  $('#profileAvatar').textContent = initials(currentUser.name);
+  $('#profileName').textContent = currentUser.name;
+  $('#profileRole').textContent = currentUser.role + ' · ' + (branchData?.name || '');
+  const myEntries = entries.filter(e => e.staffId === currentUserId);
+  const visits = myEntries.filter(e => e.type === 'visit').length;
+  const assignedToMe = entries.filter(e => e.type==='assigned' && e.assignedTo===currentUserId);
+  const done = assignedToMe.filter(e => e.status==='done').length;
+  $('#pStatVisits').textContent = visits;
+  $('#pStatAssigned').textContent = assignedToMe.length;
+  $('#pStatOnTime').textContent = assignedToMe.length ? Math.round(done/assignedToMe.length*100)+'%' : '–';
+  const method = localStorage.getItem('bl_secMethod_' + currentUserId);
+  $('#currentSecMethod').textContent = method === 'webauthn' ? 'Phone security (fingerprint/face/PIN)' : 'Pattern';
+}
+$('#changeSecurityBtn').onclick = () => goToChooseSecurity(false);
+$('#mgrChangeSecurityBtn').onclick = () => goToChooseSecurity(false);
+$('#logoutBtn').onclick = () => { currentUserId=null; localStorage.removeItem('bl_currentUserId'); location.reload(); };
+$('#mgrLogoutBtn').onclick = () => { currentUserId=null; localStorage.removeItem('bl_currentUserId'); location.reload(); };
+
+/* ================= Staff settings toggles ================= */
+$$('[data-toggle]').forEach(btn => {
+  const key = btn.dataset.toggle;
+  btn.classList.toggle('on', !!notifPrefs[key]);
+  btn.onclick = () => {
+    notifPrefs[key] = !notifPrefs[key];
+    btn.classList.toggle('on', notifPrefs[key]);
+    localStorage.setItem('bl_notifPrefs', JSON.stringify(notifPrefs));
+  };
+});
+
+/* ================= Manager: overview ================= */
+function renderMgrOverview(){
+  if(!currentUser?.isManager) return;
+  $('#mgrAvatarBtn').textContent = initials(currentUser.name);
+  $('#mgrBranchLabel').textContent = branchData?.name ? `${branchData.name} overview` : 'Branch overview';
+  const todayEntries = entries.filter(e => isToday(e.createdAt));
+  const pending = entries.filter(e => e.type==='assigned' && e.status!=='done');
+  $('#mgrStatEntries').textContent = todayEntries.length;
+  $('#mgrStatPending').textContent = pending.length;
+  $('#mgrStatStaff').textContent = staffList.filter(s=>!s.isManager).length;
+
+  const personRow = $('#mgrPersonRow');
+  personRow.innerHTML = staffList.filter(s=>!s.isManager).map(s => {
+    const hasPending = pending.some(e => e.assignedTo === s.id);
+    const isPendingJoin = s.joined === false;
+    return `<button class="p-avatar-sm" data-drill="${s.id}" style="${isPendingJoin?'opacity:.5;':''}">${initials(s.name)}${hasPending?'<span class="pending-dot"></span>':''}</button>`;
+  }).join('');
+  $$('[data-drill]', personRow).forEach(btn => { btn.onclick = () => openDrilldown(btn.dataset.drill); });
+
+  let feed = [...entries];
+  if(mgrFilterState !== 'all') feed = feed.filter(e => e.type === mgrFilterState);
+  feed = feed.slice(0, 25);
+  const feedList = $('#mgrFeedList');
+  if(feed.length === 0){
+    feedList.innerHTML = '<div class="empty-state">No entries yet.</div>';
+  } else {
+    feedList.innerHTML = feed.map(e => {
+      const name = e.type==='assigned' ? staffName(e.assignedTo) : staffName(e.staffId);
+      const badge = e.type==='assigned' ? (e.status==='done' ? entryBadge('assigned') : '<span class="badge pending">Pending</span>') : entryBadge(e.type);
+      const text = e.type==='assigned' ? e.task : `${e.customer? e.customer+' — ':''}${e.detail||''}`;
+      return `<div class="entry">${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}</div><div class="m">${fmtTime(e.createdAt)}</div></div></div>`;
+    }).join('');
+  }
+}
+$$('#mgrFilters .chip').forEach(chip => {
+  chip.onclick = () => {
+    $$('#mgrFilters .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    mgrFilterState = chip.dataset.filter;
+    renderMgrOverview();
+  };
+});
+
+/* ================= Manager: drilldown ================= */
+function openDrilldown(staffId){
+  drilldownStaffId = staffId;
+  const s = staffList.find(x => x.id === staffId);
+  if(!s) return;
+  $('#ddAvatar').textContent = initials(s.name);
+  $('#ddName').textContent = s.name;
+  $('#ddRole').textContent = s.role + (s.joined===false ? ' · Invite pending' : '');
+  showScreen('mgr-drilldown');
+  renderDrilldown();
+}
+function renderDrilldown(){
+  if(!drilldownStaffId) return;
+  const staffEntries = entries.filter(e => e.staffId === drilldownStaffId);
+  const assigned = entries.filter(e => e.type==='assigned' && e.assignedTo === drilldownStaffId);
+  const visits = staffEntries.filter(e => e.type==='visit').length;
+  const pendingCount = assigned.filter(e => e.status!=='done').length;
+  $('#ddStatVisits').textContent = visits;
+  $('#ddStatAssigned').textContent = assigned.length;
+  $('#ddStatPending').textContent = pendingCount;
+  const all = [...staffEntries, ...assigned].sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  const list = $('#ddEntryList');
+  if(all.length === 0){ list.innerHTML = '<div class="empty-state">No entries yet.</div>'; }
+  else {
+    list.innerHTML = all.slice(0,20).map(e => {
+      if(e.type === 'assigned'){
+        return `<div class="entry">${e.status==='done'?entryBadge('assigned'):'<span class="badge pending">Pending</span>'}
+          <div class="body"><div class="t">${escapeHtml(e.task||'')}</div><div class="m">${fmtDate(e.createdAt)}, ${fmtTime(e.createdAt)}</div></div></div>`;
+      }
+      return `<div class="entry">${entryBadge(e.type)}<div class="body"><div class="t">${escapeHtml(e.customer?e.customer+' — ':'')}${escapeHtml(e.detail||'')}</div>
+        <div class="m">${fmtDate(e.createdAt)}, ${fmtTime(e.createdAt)}</div></div></div>`;
+    }).join('');
+  }
+}
+$('#ddAssignBtn').onclick = () => openAssignScreen(drilldownStaffId);
+
+/* ================= Manager: assign work ================= */
+function openAssignScreen(preselectId){
+  assignSelectedIds = new Set(preselectId ? [preselectId] : []);
+  $('#assignTask').value = '';
+  $('#assignDue').value = new Date().toISOString().slice(0,10);
+  renderAssignStaffPick();
+  showScreen('assign');
+}
+$('#mgrAssignBtn').onclick = () => openAssignScreen(null);
+function renderAssignStaffPick(){
+  const wrap = $('#assignStaffPick');
+  wrap.innerHTML = staffList.filter(s=>!s.isManager).map(s =>
+    `<button class="pickchip ${assignSelectedIds.has(s.id)?'sel':''}" data-sid="${s.id}">${s.name.split(' ')[0]}</button>`
+  ).join('');
+  $$('[data-sid]', wrap).forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.sid;
+      if(assignSelectedIds.has(id)) assignSelectedIds.delete(id); else assignSelectedIds.add(id);
+      renderAssignStaffPick();
+    };
+  });
+}
+$('#assignSaveBtn').onclick = async () => {
+  const task = $('#assignTask').value.trim();
+  const due = $('#assignDue').value;
+  if(!task){ toast('Please describe the task'); return; }
+  if(assignSelectedIds.size === 0){ toast('Pick at least one staff member'); return; }
+  for(const sid of assignSelectedIds){
+    await addDoc(collection(db,'branches',branchId,'entries'), {
+      type: 'assigned', task, dueDate: due, status: 'pending',
+      assignedTo: sid, createdBy: currentUserId, createdAt: serverTimestamp()
+    });
+  }
+  toast('Task assigned');
+  showScreen(drilldownStaffId ? 'mgr-drilldown' : 'mgr-overview');
+  renderAll();
+};
+
+/* ================= Manager: pending ================= */
+function renderPending(){
+  const pending = entries.filter(e => e.type==='assigned' && e.status !== 'done');
+  const overdue = pending.filter(e => dueStatus(e.dueDate).cls === 'late');
+  const dueToday = pending.filter(e => dueStatus(e.dueDate).cls === 'today2');
+  const upcoming = pending.filter(e => dueStatus(e.dueDate).cls === 'future');
+  $('#pdTotal').textContent = pending.length;
+  $('#pdOverdue').textContent = overdue.length;
+  $('#pdToday').textContent = dueToday.length;
+
+  function section(title, list, cls){
+    if(list.length === 0) return '';
+    const chipColor = cls==='late'?'var(--danger)':cls==='today2'?'var(--warn)':'var(--lav-400)';
+    let html = `<div class="sectiontitle">${title} <span class="cnt" style="background:${chipColor}">${list.length}</span></div>`;
+    list.forEach(e => {
+      const ds = dueStatus(e.dueDate);
+      html += `<div class="p-item ${cls==='late'?'overdue':''}">
+        <div class="p-item-top"><div class="s-avatar" style="width:26px;height:26px;font-size:10px;">${initials(staffName(e.assignedTo))}</div>
+        <div class="nm">${escapeHtml(staffName(e.assignedTo))}</div><div class="due ${ds.cls}">${ds.label}</div></div>
+        <div class="task">${escapeHtml(e.task||'')}</div>
+        <div class="p-actions">
+          <button class="act-done" data-mark-done="${e.id}">Mark done</button>
+          <button class="act-cancel" data-cancel="${e.id}">Cancel</button>
+        </div></div>`;
+    });
+    return html;
+  }
+  const wrap = $('#pendingListWrap');
+  if(pending.length === 0){ wrap.innerHTML = '<div class="empty-state">Nothing pending — all caught up.</div>'; }
+  else { wrap.innerHTML = section('Overdue', overdue, 'late') + section('Due today', dueToday, 'today2') + section('Upcoming', upcoming, 'future'); }
+  $$('[data-mark-done]', wrap).forEach(btn => {
+    btn.onclick = async () => { await updateDoc(doc(db,'branches',branchId,'entries',btn.dataset.markDone), { status:'done' }); toast('Marked done'); };
+  });
+  $$('[data-cancel]', wrap).forEach(btn => {
+    btn.onclick = async () => { await deleteDoc(doc(db,'branches',branchId,'entries',btn.dataset.cancel)); toast('Task cancelled'); };
+  });
+}
+
+/* ================= Manager: staff list (manage) ================= */
+function renderStaffManage(){
+  $('#staffCountLabel').textContent = `${staffList.length} people`;
+  const wrap = $('#staffListWrap');
+  wrap.innerHTML = staffList.map(s => `
+    <div class="s-row">
+      <div class="s-avatar ${s.isManager?'mgr':''}" style="${s.isManager?'background:linear-gradient(135deg,var(--gold),var(--lav-700));':''}">${initials(s.name)}</div>
+      <div class="s-info"><div class="nm">${escapeHtml(s.name)}</div><div class="role">${escapeHtml(s.role)}</div></div>
+      ${s.joined===false ? '<span class="s-status pending">Invite sent</span>' : (s.isManager?'':'<span class="s-status active">Active</span>')}
+      ${s.isManager ? '' : `<button class="s-menu" data-remove="${s.id}">✕</button>`}
+    </div>`).join('');
+  $$('[data-remove]', wrap).forEach(btn => { btn.onclick = () => confirmRemoveStaff(btn.dataset.remove); });
+}
+$('#addStaffBtn').onclick = () => {
+  $('#newStaffName').value = '';
+  $$('#newStaffRolePick .pickchip').forEach((b,i) => b.classList.toggle('sel', i===2));
+  showScreen('add-staff');
+};
+$$('#newStaffRolePick .pickchip').forEach(btn => {
+  btn.onclick = () => { $$('#newStaffRolePick .pickchip').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); };
+});
+$('#newStaffSaveBtn').onclick = async () => {
+  const name = $('#newStaffName').value.trim();
+  const roleBtn = $('#newStaffRolePick .pickchip.sel');
+  if(!name){ toast('Enter a name'); return; }
+  const dup = staffList.find(s => s.name.trim().toLowerCase() === name.toLowerCase());
+  if(dup){
+    toast(dup.joined===false ? `${name} already has a pending invite` : `${name} is already on the team`);
+    return;
+  }
+  const role = roleBtn ? roleBtn.dataset.role : 'CSA';
+  const staffId = genId('staff');
+  await setDoc(doc(db,'branches',branchId,'staff',staffId), {
+    name, role, isManager:false, active:true, joined:false, createdAt: serverTimestamp()
+  });
+  const invCode = genId('inv');
+  await setDoc(doc(db,'invites',invCode), {
+    branchId, staffId, name, role, createdAt: serverTimestamp()
+  });
+  const link = `${window.location.origin}${window.location.pathname}?invite=${invCode}`;
+  $('#inviteResultName').textContent = name;
+  $('#inviteLinkBox').textContent = link;
+  $('#copyInviteBtn').dataset.link = link;
+  showScreen('invite-result');
+};
+$('#copyInviteBtn').onclick = async () => {
+  const link = $('#copyInviteBtn').dataset.link;
+  try{
+    await navigator.clipboard.writeText(link);
+    toast('Link copied');
+  }catch(e){
+    toast('Could not copy — long-press the link to copy manually');
+  }
+};
+function confirmRemoveStaff(staffId){
+  const s = staffList.find(x=>x.id===staffId);
+  if(!s) return;
+  $('#modalSheet').innerHTML = `
+    <div style="padding:30px 24px;text-align:center;">
+      <div style="width:56px;height:56px;border-radius:50%;background:#FBE4DE;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;">⚠️</div>
+      <h2 style="font-size:16px;margin-bottom:8px;">Remove ${escapeHtml(s.name)}?</h2>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.5;max-width:280px;margin:0 auto 18px;">
+        They'll lose access immediately. Their past entries stay in your reports — nothing is deleted, only future access is removed.
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button id="modalCancel" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-100);color:var(--lav-700);">Cancel</button>
+        <button id="modalConfirmRemove" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--danger);color:#fff;">Remove</button>
+      </div>
+    </div>`;
+  $('#modalOverlay').classList.add('active');
+  $('#modalCancel').onclick = closeModal;
+  $('#modalConfirmRemove').onclick = async () => {
+    await updateDoc(doc(db,'branches',branchId,'staff',staffId), { active:false });
+    closeModal();
+    toast('Staff removed');
+  };
+}
+function closeModal(){ $('#modalOverlay').classList.remove('active'); }
+$('#modalOverlay').onclick = (e) => { if(e.target.id==='modalOverlay') closeModal(); };
+
+/* ================= Broadcast ================= */
+$('#mgrBroadcastBtn').onclick = () => {
+  broadcastSelected = new Set(['__all__']);
+  $('#broadcastMsg').value = '';
+  renderBroadcastPick();
+  showScreen('broadcast');
+};
+function renderBroadcastPick(){
+  const wrap = $('#broadcastPick');
+  let html = `<button class="pickchip all-chip ${broadcastSelected.has('__all__')?'sel':''}" data-bid="__all__">Everyone</button>`;
+  html += staffList.filter(s=>!s.isManager).map(s =>
+    `<button class="pickchip ${broadcastSelected.has(s.id)?'sel':''}" data-bid="${s.id}">${s.name.split(' ')[0]}</button>`
+  ).join('');
+  wrap.innerHTML = html;
+  $$('[data-bid]', wrap).forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.bid;
+      if(id === '__all__'){ broadcastSelected = new Set(['__all__']); }
+      else {
+        broadcastSelected.delete('__all__');
+        if(broadcastSelected.has(id)) broadcastSelected.delete(id); else broadcastSelected.add(id);
+        if(broadcastSelected.size === 0) broadcastSelected.add('__all__');
+      }
+      renderBroadcastPick();
+    };
+  });
+}
+$('#broadcastSendBtn').onclick = async () => {
+  const msg = $('#broadcastMsg').value.trim();
+  if(!msg){ toast('Type a message'); return; }
+  const targets = broadcastSelected.has('__all__') ? staffList.filter(s=>!s.isManager).map(s=>s.id) : Array.from(broadcastSelected);
+  await addDoc(collection(db,'branches',branchId,'notifications'), {
+    message: msg, targets, from: currentUserId, createdAt: serverTimestamp()
+  });
+  toast('Sent to ' + (broadcastSelected.has('__all__') ? 'everyone' : targets.length + ' staff'));
+  showScreen('mgr-overview');
+};
+
+/* ================= Manager profile / reports ================= */
+function renderMgrProfile(){
+  if(!currentUser) return;
+  $('#mgrProfileAvatar').textContent = initials(currentUser.name);
+  $('#mgrProfileName').textContent = currentUser.name;
+  $('#mgrProfileBranch').textContent = `Branch Manager · ${branchData?.name || ''}`;
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
+  const weekEntries = entries.filter(e => {
+    const d = e.createdAt?.toDate ? e.createdAt.toDate() : null;
+    return d && d >= weekAgo;
+  });
+  $('#weeklyTotalLabel').textContent = `${weekEntries.length} entries logged this week`;
+  const method = localStorage.getItem('bl_secMethod_' + currentUserId);
+  $('#mgrCurrentSecMethod').textContent = method === 'webauthn' ? 'Phone security (fingerprint/face/PIN)' : 'Pattern';
+}
+
+/* ================= Central render ================= */
+function renderAll(){
+  if(!currentUser) return;
+  const active = document.querySelector('.screen.active')?.id;
+  if(active === 'screen-staff-dash') { renderStaffDash(); updateNotifBadge(); }
+  if(active === 'screen-staff-notifs') renderStaffNotifs();
+  if(active === 'screen-staff-history') renderStaffHistory();
+  if(active === 'screen-staff-profile') renderStaffProfile();
+  if(active === 'screen-mgr-overview') renderMgrOverview();
+  if(active === 'screen-mgr-drilldown') renderDrilldown();
+  if(active === 'screen-mgr-pending') renderPending();
+  if(active === 'screen-mgr-staff') renderStaffManage();
+  if(active === 'screen-mgr-profile') renderMgrProfile();
+}
+
+boot();
+</script>
+</body>
+</html>

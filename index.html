@@ -22,6 +22,7 @@
   .screen{display:none;flex-direction:column;min-height:100vh;animation:fadeIn .2s ease;}
   .screen.active{display:flex;}
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes bannerIn{from{opacity:0;transform:translate(-50%,-16px);}to{opacity:1;transform:translate(-50%,0);}}
 
   /* ---- Splash / Welcome ---- */
   #screen-splash, #screen-welcome{background:linear-gradient(160deg,var(--lav-600),var(--lav-700));color:#fff;
@@ -727,26 +728,27 @@ window.addEventListener('beforeinstallprompt', (e) => {
   deferredInstallPrompt = e;
 });
 $('#installAppBtn').onclick = async () => {
-  // Ask for notification permission right here — a natural, expected moment
-  // (right after choosing to install), with clear feedback either way.
+  // Unlock audio playback for later notification sounds — browsers require a real
+  // user gesture before audio can play; this tap satisfies that requirement.
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') await audioCtx.resume();
+  }catch(e){}
+  // Ask for notification permission right here — a natural, expected moment.
   if('Notification' in window && Notification.permission === 'default'){
-    try{
-      const perm = await Notification.requestPermission();
-      if(perm === 'granted') toast('Notifications enabled');
-    }catch(e){}
+    try{ await Notification.requestPermission(); }catch(e){}
   }
-  if(deferredInstallPrompt){
-    deferredInstallPrompt.prompt();
-    const choice = await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    if(choice.outcome === 'accepted') toast('Installed!');
-    goToChooseSecurity(true);
-  } else {
-    // Prompt not available yet (already installed, or browser needs more engagement first) —
-    // don't block the person, just move them forward.
-    toast('Use your browser menu → "Add to Home Screen" if this didn\'t open');
-    goToChooseSecurity(true);
+  try{
+    if(deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+    }
+  }catch(e){
+    console.warn('Install prompt failed', e);
   }
+  // Always advance, no matter what happened above — never leave the person stuck here.
+  goToChooseSecurity(true);
 };
 $('#skipInstallBtn').onclick = async () => {
   if('Notification' in window && Notification.permission === 'default'){
@@ -879,20 +881,78 @@ async function ensureServiceWorker(){
     return null;
   }
 }
-function fireLocalNotification(title, body){
-  if(!('Notification' in window) || Notification.permission !== 'granted') return;
-  if(document.visibilityState === 'visible'){
-    // App is open and in front — a toast is enough, a system popup would be redundant/annoying
-    toast(body);
-    return;
-  }
-  if(swRegistration){
-    swRegistration.showNotification(title, {
-      body, icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [200,100,200], tag: 'branch-log-live'
+/* Loud alert tone generated in-browser — no audio file needed, works even if the
+   page is minimized (as long as it's not fully killed). Two-tone rising chime,
+   noticeably louder/longer than a default system blip. */
+let audioCtx = null;
+function playAlertSound(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const notes = [880, 1108]; // two-tone rising chime
+    notes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const start = now + i * 0.18;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.5, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(start);
+      osc.stop(start + 0.4);
     });
-  } else if(Notification.permission === 'granted'){
-    new Notification(title, { body, icon: 'icon-192.png' });
+  }catch(e){
+    console.warn('Alert sound failed', e);
   }
+}
+function strongVibrate(){
+  if('vibrate' in navigator){
+    try{ navigator.vibrate([300, 100, 300, 100, 300]); }catch(e){}
+  }
+}
+function fireLocalNotification(title, body){
+  // Always show a loud, unmissable in-app banner — this works 100% of the time,
+  // regardless of browser permission state, so nothing ever silently fails.
+  showNotifBanner(title, body);
+  playAlertSound();
+  strongVibrate();
+
+  // Additionally, try a real system-level popup (lock screen / notification tray)
+  // when permission allows it — this is a bonus on top of the banner, not a replacement.
+  if('Notification' in window && Notification.permission === 'granted'){
+    if(swRegistration){
+      swRegistration.showNotification(title, {
+        body, icon: 'icon-192.png', badge: 'icon-192.png',
+        vibrate: [300,100,300,100,300], tag: 'branch-log-live-' + Date.now(), requireInteraction: true
+      });
+    } else {
+      try{ new Notification(title, { body, icon: 'icon-192.png' }); }catch(e){}
+    }
+  }
+}
+function showNotifBanner(title, body){
+  const existing = document.getElementById('liveNotifBanner');
+  if(existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'liveNotifBanner';
+  banner.style.cssText = `position:fixed;top:12px;left:50%;transform:translateX(-50%);width:calc(100% - 32px);
+    max-width:448px;background:var(--lav-700);color:#fff;border-radius:16px;padding:14px 16px;
+    box-shadow:0 10px 30px rgba(46,38,64,0.35);z-index:2000;display:flex;gap:11px;align-items:flex-start;
+    animation:bannerIn .25s ease;`;
+  banner.innerHTML = `
+    <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🔔</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:700;font-size:13px;">${escapeHtml(title)}</div>
+      <div style="font-size:12px;color:var(--lav-100);margin-top:2px;">${escapeHtml(body)}</div>
+    </div>
+    <button style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:16px;padding:0;flex-shrink:0;">✕</button>`;
+  banner.querySelector('button').onclick = () => banner.remove();
+  document.body.appendChild(banner);
+  setTimeout(() => { if(banner.parentNode) banner.remove(); }, 6000);
 }
 let notifFirstLoad = true;
 function listenNotifications(){

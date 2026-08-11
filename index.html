@@ -2283,16 +2283,21 @@ $('#assignSaveBtn').onclick = async () => {
   const due = $('#assignDue').value;
   if(!task){ toast('Please describe the task'); return; }
   if(assignSelectedIds.size === 0){ toast('Pick at least one staff member'); return; }
-  for(const sid of assignSelectedIds){
-    await addDoc(collection(db,'branches',branchId,'entries'), {
-      type: 'assigned', task, dueDate: due, status: 'pending',
-      assignedTo: sid, createdBy: currentUserId, createdAt: serverTimestamp()
-    });
+  try{
+    for(const sid of assignSelectedIds){
+      await addDoc(collection(db,'branches',branchId,'entries'), {
+        type: 'assigned', task, dueDate: due, status: 'pending',
+        assignedTo: sid, createdBy: currentUserId, createdAt: serverTimestamp()
+      });
+    }
+    sendPush(Array.from(assignSelectedIds), '🗂️ New task assigned', task);
+    toast('Task assigned');
+    showScreen(drilldownStaffId ? 'mgr-drilldown' : 'mgr-overview');
+    renderAll();
+  }catch(err){
+    console.error('Assign task failed', err);
+    toast('Could not save — ' + (err?.message || 'check your connection and try again'));
   }
-  sendPush(Array.from(assignSelectedIds), '🗂️ New task assigned', task);
-  toast('Task assigned');
-  showScreen(drilldownStaffId ? 'mgr-drilldown' : 'mgr-overview');
-  renderAll();
 };
 
 /* ================= Manager: pending ================= */
@@ -2444,12 +2449,18 @@ $('#broadcastSendBtn').onclick = async () => {
   const msg = $('#broadcastMsg').value.trim();
   if(!msg){ toast('Type a message'); return; }
   const targets = broadcastSelected.has('__all__') ? staffList.filter(s=>!s.isManager).map(s=>s.id) : Array.from(broadcastSelected);
-  await addDoc(collection(db,'branches',branchId,'notifications'), {
-    message: msg, targets, from: currentUserId, kind: 'broadcast', createdAt: serverTimestamp(), seenBy: {}
-  });
-  sendPush(targets, '📢 ' + (currentUser?.name || 'Manager'), msg);
-  toast('Sent to ' + (broadcastSelected.has('__all__') ? 'everyone' : targets.length + ' staff'));
-  showScreen('mgr-overview');
+  if(targets.length === 0){ toast('No staff to send to'); return; }
+  try{
+    await addDoc(collection(db,'branches',branchId,'notifications'), {
+      message: msg, targets, from: currentUserId, kind: 'broadcast', createdAt: serverTimestamp(), seenBy: {}
+    });
+    sendPush(targets, '📢 ' + (currentUser?.name || 'Manager'), msg);
+    toast('Sent to ' + (broadcastSelected.has('__all__') ? 'everyone' : targets.length + ' staff'));
+    showScreen('mgr-overview');
+  }catch(err){
+    console.error('Send notification failed', err);
+    toast('Could not send — ' + (err?.message || 'check your connection and try again'));
+  }
 };
 
 /* ================= Manager profile / reports ================= */
@@ -2502,6 +2513,15 @@ function renderNotifPermRow(){
   else row.textContent = 'Not enabled — tap to enable';
 }
 $('#notifPermRow').onclick = requestNotifPermission;
+
+/* Global safety net: catches anything that fails silently elsewhere in the app
+   (unhandled promise rejections — e.g. an addDoc/updateDoc call somewhere that
+   wasn't wrapped in try/catch) and surfaces it as a toast instead of nothing
+   happening with no clue why. */
+window.addEventListener('unhandledrejection', (ev) => {
+  console.error('Unhandled error:', ev.reason);
+  toast('Something went wrong — ' + (ev.reason?.message || 'check your connection'));
+});
 
 boot();
 </script>

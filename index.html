@@ -370,7 +370,13 @@
       </div>
     </div>
     <div class="main-scroll">
+      <div id="staffPermBanner" style="display:none;background:#FFF4E5;border:1px solid #F5C97D;border-radius:12px;padding:11px 13px;margin-bottom:12px;font-size:12px;color:#7A4E00;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span>🔕 Notifications are off — you won't be alerted to new tasks or messages.</span>
+        <button id="staffPermBannerBtn" style="background:#F5C97D;border:none;border-radius:8px;padding:6px 10px;font-weight:700;font-size:11px;flex-shrink:0;">Enable</button>
+      </div>
       <button class="addbtn" id="staffAddBtn">＋ Add entry</button>
+      <div class="sectiontitle" id="staffNotifSectionTitle" style="display:none;">Notifications</div>
+      <div class="entry-list" id="staffNotifPreview"></div>
       <div class="sectiontitle">Assigned to you</div>
       <div class="entry-list" id="staffAssignedList"></div>
       <div class="sectiontitle">Your entries today</div>
@@ -498,6 +504,10 @@
       </div>
     </div>
     <div class="main-scroll">
+      <div id="mgrPermBanner" style="display:none;background:#FFF4E5;border:1px solid #F5C97D;border-radius:12px;padding:11px 13px;margin-bottom:12px;font-size:12px;color:#7A4E00;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span>🔕 Notifications are off — you won't be alerted to replies or updates.</span>
+        <button id="mgrPermBannerBtn" style="background:#F5C97D;border:none;border-radius:8px;padding:6px 10px;font-weight:700;font-size:11px;flex-shrink:0;">Enable</button>
+      </div>
       <div class="filters" id="mgrFilters">
         <button class="chip active" data-filter="all">All</button>
         <button class="chip" data-filter="assigned">Assigned</button>
@@ -507,6 +517,8 @@
       <div class="person-row" id="mgrPersonRow"></div>
       <button class="addbtn" id="mgrAssignBtn">＋ Assign work to staff</button>
       <button class="addbtn" id="mgrBroadcastBtn" style="background:var(--gold);">📢 Send notification</button>
+      <div class="sectiontitle" id="mgrNotifSectionTitle" style="display:none;">Notifications</div>
+      <div class="entry-list" id="mgrNotifPreview"></div>
       <div class="sectiontitle">Live feed</div>
       <div class="entry-list" id="mgrFeedList"></div>
     </div>
@@ -774,6 +786,55 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
+/* ================= Notification permission: visible status everywhere it matters =====
+   Every previous permission prompt caught errors silently — that's correct for not
+   crashing, but it also meant a denied/ignored prompt left no visible trace anywhere,
+   which is very likely why notifications appeared to "not work": the browser prompt
+   was dismissed or blocked once, and nothing afterward showed that as the cause. */
+function notifPermState(){
+  if(!('Notification' in window)) return 'unsupported';
+  return Notification.permission; // 'granted' | 'denied' | 'default'
+}
+function updatePermBanners(){
+  const state = notifPermState();
+  const show = state !== 'granted';
+  const staffBanner = $('#staffPermBanner');
+  const mgrBanner = $('#mgrPermBanner');
+  if(staffBanner) staffBanner.style.display = show ? 'flex' : 'none';
+  if(mgrBanner) mgrBanner.style.display = show ? 'flex' : 'none';
+}
+async function requestNotifPermission(){
+  if(!('Notification' in window)){
+    toast('This browser does not support notifications');
+    return;
+  }
+  const state = Notification.permission;
+  if(state === 'granted'){
+    toast('Notifications already enabled');
+    updatePermBanners();
+    return;
+  }
+  if(state === 'denied'){
+    toast('Blocked in browser settings — open site settings for this app and allow Notifications, then reopen the app');
+    return;
+  }
+  try{
+    const result = await Notification.requestPermission();
+    if(result === 'granted'){
+      toast('Notifications enabled');
+      acquireWakeLock();
+    } else {
+      toast('Notifications were not enabled — tasks and messages will only show while the app is open');
+    }
+  }catch(e){
+    toast('Could not request notification permission');
+  }
+  updatePermBanners();
+  renderNotifPermRow();
+}
+$('#staffPermBannerBtn')?.addEventListener('click', requestNotifPermission);
+$('#mgrPermBannerBtn')?.addEventListener('click', requestNotifPermission);
+
 /* ================= PWA install prompt capture ================= */
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -791,6 +852,7 @@ $('#installAppBtn').onclick = async () => {
   if('Notification' in window && Notification.permission === 'default'){
     try{ await Notification.requestPermission(); }catch(e){}
   }
+  updatePermBanners();
   try{
     if(deferredInstallPrompt){
       deferredInstallPrompt.prompt();
@@ -808,6 +870,7 @@ $('#skipInstallBtn').onclick = async () => {
   if('Notification' in window && Notification.permission === 'default'){
     try{ await Notification.requestPermission(); }catch(e){}
   }
+  updatePermBanners();
   registerPeriodicSync();
   goToChooseSecurity(true);
 };
@@ -1517,6 +1580,31 @@ function staffName(id){
 function renderStaffDash(){
   if(!currentUser || currentUser.isManager) return;
   $('#staffGreetName').textContent = `${(currentUser.name||'').split(' ')[0]}'s day`;
+
+  // Notification preview: latest broadcasts, most recent first, unread ones highlighted.
+  const mine = myNotifications();
+  const seenIds = new Set(JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]'));
+  const previewTitle = $('#staffNotifSectionTitle');
+  const previewWrap = $('#staffNotifPreview');
+  if(mine.length === 0){
+    previewTitle.style.display = 'none';
+    previewWrap.innerHTML = '';
+  } else {
+    previewTitle.style.display = '';
+    previewWrap.innerHTML = mine.slice(0,3).map(n => {
+      const unread = !seenIds.has(n.id);
+      return `
+      <div class="entry" style="${unread ? 'border-left:3px solid var(--gold);' : ''}">
+        <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(n.from) || 'M')}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(n.from) || 'Manager')}</div>
+          <div style="font-size:12px;margin-top:2px;">${escapeHtml(n.message || '')}</div>
+          <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   const myEntries = entries.filter(e => e.staffId === currentUserId);
   const todayEntries = myEntries.filter(e => isToday(e.createdAt) && e.type !== 'assigned');
   const assignedToMe = entries.filter(e => e.type === 'assigned' && e.assignedTo === currentUserId);
@@ -1677,6 +1765,33 @@ function renderMgrOverview(){
   if(!currentUser?.isManager) return;
   $('#mgrAvatarBtn').textContent = initials(currentUser.name);
   $('#mgrBranchLabel').textContent = branchData?.name ? `${branchData.name} overview` : 'Branch overview';
+
+  // Notification preview: latest reply activity from staff, unread ones highlighted.
+  const items = mgrActivityItems();
+  const lastSeen = Number(localStorage.getItem('bl_mgrNotifSeenAt_' + currentUserId) || 0);
+  const previewTitle = $('#mgrNotifSectionTitle');
+  const previewWrap = $('#mgrNotifPreview');
+  if(items.length === 0){
+    previewTitle.style.display = 'none';
+    previewWrap.innerHTML = '';
+  } else {
+    previewTitle.style.display = '';
+    previewWrap.innerHTML = items.slice(0,3).map(it => {
+      const itVal = it.at?.seconds ?? it.at ?? 0;
+      const unread = itVal > lastSeen;
+      return `
+      <div class="entry" style="${unread ? 'border-left:3px solid var(--gold);' : ''}">
+        <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(it.from))}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(it.from))} replied</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">on "${escapeHtml(it.task)}"</div>
+          <div style="font-size:12px;margin-top:4px;">${escapeHtml(it.text)}</div>
+          <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   const todayEntries = entries.filter(e => isToday(e.createdAt));
   const pending = entries.filter(e => e.type==='assigned' && e.status!=='done');
   $('#mgrStatEntries').textContent = todayEntries.length;
@@ -1768,6 +1883,14 @@ function openEditEntry(entryId){
   }
   showScreen('edit-entry');
   $('#editEntrySaveBtn').onclick = async () => {
+    // Guard against the manager deleting this entry while it's open for edit — Firestore's
+    // updateDoc() would otherwise silently recreate it as a near-empty doc instead of failing.
+    const stillExists = entries.some(x => x.id === entryId);
+    if(!stillExists){
+      toast('This entry no longer exists');
+      showScreen(currentUser?.isManager ? 'mgr-overview' : 'staff-dash');
+      return;
+    }
     if(e.type === 'assigned'){
       const task = $('#editTaskText').value.trim();
       const dueDate = $('#editTaskDue').value;
@@ -2050,6 +2173,7 @@ function renderMgrProfile(){
 /* ================= Central render ================= */
 function renderAll(){
   if(!currentUser) return;
+  updatePermBanners();
   const active = document.querySelector('.screen.active')?.id;
   if(active === 'screen-staff-dash') { renderStaffDash(); updateNotifBadge(); }
   if(active === 'screen-staff-notifs') renderStaffNotifs();
@@ -2078,18 +2202,7 @@ function renderNotifPermRow(){
   else if(state === 'denied') row.textContent = 'Blocked — tap to see how to enable';
   else row.textContent = 'Not enabled — tap to enable';
 }
-$('#notifPermRow').onclick = async () => {
-  if(!('Notification' in window)) return;
-  if(Notification.permission === 'default'){
-    try{ await Notification.requestPermission(); }catch(e){}
-    renderNotifPermRow();
-    if(Notification.permission === 'granted') acquireWakeLock();
-  } else if(Notification.permission === 'denied'){
-    toast('Blocked in browser settings — open site settings for this app and allow Notifications');
-  } else {
-    toast('Notifications are already enabled');
-  }
-};
+$('#notifPermRow').onclick = requestNotifPermission;
 
 boot();
 </script>

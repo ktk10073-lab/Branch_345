@@ -6,6 +6,16 @@
 <title>Branch Log</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#6E5AA0">
+<!-- OneSignal Web Push SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "ff7adc5f-e938-4d48-8729-679ee64f2594",
+    });
+  });
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&display=swap');
   :root{
@@ -968,6 +978,55 @@ async function loadBranch(bId){
   listenStaff();
   listenEntries();
   listenNotifications();
+  onesignalIdentifyCurrentUser();
+}
+/* ================= OneSignal push sending =================
+   REST API key required to actually send pushes (App ID alone only lets the SDK
+   *receive*). Get it from OneSignal dashboard > Settings > Keys & IDs > REST API Key,
+   then paste it below. Until it's set, sendPush() no-ops so nothing breaks — in-app
+   notifications (the Firestore-based ones) keep working exactly as before either way. */
+const ONESIGNAL_APP_ID = "ff7adc5f-e938-4d48-8729-679ee64f2594";
+const ONESIGNAL_REST_API_KEY = ""; // <-- paste your REST API Key here
+async function sendPush(targetStaffIds, title, body){
+  if(!ONESIGNAL_REST_API_KEY){
+    console.warn('OneSignal REST API key not set — skipping real push, in-app notification still saved.');
+    return;
+  }
+  const ids = Array.isArray(targetStaffIds) ? targetStaffIds : [targetStaffIds];
+  if(ids.length === 0) return;
+  try{
+    await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        target_channel: 'push',
+        include_aliases: { external_id: ids },
+        headings: { en: title },
+        contents: { en: body }
+      })
+    });
+  }catch(e){ console.warn('OneSignal push send failed', e); }
+}
+/* Ties this browser's OneSignal push subscription to our Firestore staff id (as a
+   OneSignal "External ID"), so a push can be targeted at a specific person later —
+   e.g. `OneSignal.login(staffId)`. Safe to call repeatedly; OneSignal dedupes. Also
+   prompts for the native push permission if the person hasn't been asked yet, since
+   this is a natural, expected moment (right after unlocking into the app). */
+function onesignalIdentifyCurrentUser(){
+  if(!currentUserId) return;
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    try{
+      await OneSignal.login(currentUserId);
+      if(OneSignal.Notifications.permission !== true && OneSignal.Notifications.permissionNative !== 'denied'){
+        OneSignal.Notifications.requestPermission().catch(()=>{});
+      }
+    }catch(e){ console.warn('OneSignal login failed', e); }
+  });
 }
 function listenStaffOnce(){
   // resolves once with the first snapshot, so currentUser is guaranteed set before we navigate
@@ -1286,7 +1345,10 @@ function renderMgrNotifs(){
       <div class="entry" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;gap:8px;">
           <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
-          ${tick}
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${tick}
+            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
+          </div>
         </div>
         <div style="font-size:12px;margin-top:4px;">${escapeHtml(n.message||'')}</div>
         <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
@@ -1321,10 +1383,34 @@ function renderMgrNotifs(){
     $$('[data-mgr-notif]', wrap).forEach(el => {
       el.onclick = () => { markMgrSeen(el.dataset.mgrNotif); renderMgrNotifs(); };
     });
+    $$('[data-notif-delete]', wrap).forEach(btn => {
+      btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.notifDelete); };
+    });
     const markAllBtn = $('#mgrMarkAllSeenBtn');
     if(markAllBtn) markAllBtn.onclick = () => { markAllMgrSeen(); renderMgrNotifs(); };
   }
   updateMgrNotifBadge();
+}
+function confirmDeleteNotification(notifId){
+  $('#modalSheet').innerHTML = `
+    <div style="padding:30px 24px;text-align:center;">
+      <div style="width:56px;height:56px;border-radius:50%;background:#FBE4DE;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;">🗑️</div>
+      <h2 style="font-size:16px;margin-bottom:8px;">Delete this message?</h2>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.5;max-width:280px;margin:0 auto 18px;">
+        It will disappear from your sent list and from the staff member's notifications too. This can't be undone.
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button id="modalCancel" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-100);color:var(--lav-700);">Cancel</button>
+        <button id="modalConfirmDelete" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--danger);color:#fff;">Delete</button>
+      </div>
+    </div>`;
+  $('#modalOverlay').classList.add('active');
+  $('#modalCancel').onclick = closeModal;
+  $('#modalConfirmDelete').onclick = async () => {
+    await deleteDoc(doc(db, 'branches', branchId, 'notifications', notifId));
+    closeModal();
+    toast('Message deleted');
+  };
 }
 
 
@@ -1527,6 +1613,7 @@ function goToDashboard(){
   ensureServiceWorker(); // needed so background/tab-hidden notifications can display
   acquireWakeLock(); // keep the tab alive/awake while phone is unlocked and app is in use
   registerPeriodicSync();
+  onesignalIdentifyCurrentUser(); // link this device's push subscription to the staff id
 }
 
 /* ================= Nav wiring ================= */
@@ -1741,6 +1828,8 @@ function renderStaffDash(){
         const e = entries.find(x => x.id === taskId);
         const newComments = [...(e.comments || []), { from: currentUserId, text, at: new Date().toISOString() }];
         await updateDoc(doc(db,'branches',branchId,'entries',taskId), { comments: newComments });
+        const mgrIds = staffList.filter(s => s.isManager).map(s => s.id);
+        sendPush(mgrIds, '💬 ' + (currentUser?.name || 'Staff') + ' replied', text);
         input.value = '';
         toast('Comment added');
       };
@@ -1866,7 +1955,11 @@ function renderMgrOverview(){
     <div class="entry">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;justify-content:space-between;gap:8px;">
-          <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>${tick}
+          <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${tick}
+            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-ov-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
+          </div>
         </div>
         <div style="font-size:12px;margin-top:2px;">${escapeHtml(n.message||'')}</div>
         <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
@@ -1892,6 +1985,9 @@ function renderMgrOverview(){
   } else {
     previewTitle.style.display = '';
     previewWrap.innerHTML = sentPreviewHtml + replyPreviewHtml;
+    $$('[data-ov-notif-delete]', previewWrap).forEach(btn => {
+      btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.ovNotifDelete); };
+    });
   }
 
   const todayEntries = entries.filter(e => isToday(e.createdAt));
@@ -1983,6 +2079,8 @@ async function postSystemNotification(targetStaffId, kind, message){
       kind, // 'broadcast' | 'task_edited' | 'task_deleted'
       createdAt: serverTimestamp(), seenBy: {}
     });
+    const title = kind === 'task_edited' ? '✏️ Task updated' : kind === 'task_deleted' ? '🗑️ Task removed' : '📢 ' + (currentUser?.name || 'Manager');
+    sendPush(targetStaffId, title, message);
   }catch(e){ console.warn('Failed to post system notification', e); }
 }
 function openEditEntry(entryId){
@@ -2115,6 +2213,7 @@ $('#assignSaveBtn').onclick = async () => {
       assignedTo: sid, createdBy: currentUserId, createdAt: serverTimestamp()
     });
   }
+  sendPush(Array.from(assignSelectedIds), '🗂️ New task assigned', task);
   toast('Task assigned');
   showScreen(drilldownStaffId ? 'mgr-drilldown' : 'mgr-overview');
   renderAll();
@@ -2272,6 +2371,7 @@ $('#broadcastSendBtn').onclick = async () => {
   await addDoc(collection(db,'branches',branchId,'notifications'), {
     message: msg, targets, from: currentUserId, kind: 'broadcast', createdAt: serverTimestamp(), seenBy: {}
   });
+  sendPush(targets, '📢 ' + (currentUser?.name || 'Manager'), msg);
   toast('Sent to ' + (broadcastSelected.has('__all__') ? 'everyone' : targets.length + ' staff'));
   showScreen('mgr-overview');
 };

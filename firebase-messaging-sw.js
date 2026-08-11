@@ -1,13 +1,26 @@
-// Branch Log service worker — v3
-// Enables offline caching (basic) and lets the app show real system notifications
-// via swRegistration.showNotification(...), triggered locally when Firestore data
-// changes — no external push server required. Works as long as the browser/app
-// stays open or was recently backgrounded (not force-closed for a long period).
+// Branch Log service worker — v4 (Spark/free-plan version)
+// No Firebase Cloud Messaging here — FCM push requires the Blaze plan, which this
+// project isn't on. Instead this adds Periodic Background Sync: a free, best-effort
+// API that occasionally wakes this service worker (commonly every few hours, browser-
+// controlled, Chrome/Android installed-PWA only) to check Firestore and fire a local
+// notification even if the app itself isn't open.
 //
-// IMPORTANT: bump the version number in the comment above (v3, v4, v5...) every time
-// this file OR index.html changes. Browsers only re-check a service worker file when
-// its bytes differ from what's cached — an unchanged file (even with new index.html
-// elsewhere) can cause the browser to skip re-fetching it, which stalls app updates.
+// HONEST LIMITS: this does NOT fire instantly, and it does NOT reliably fire while
+// the screen is locked/asleep — only real push (Blaze + Cloud Functions + FCM) closes
+// that gap completely. This is a partial mitigation, not a fix.
+//
+// IMPORTANT: bump the version number in the comment above every time this file OR
+// index.html changes, or the browser may skip re-fetching it and updates will stall.
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAR6JDl8RBBL-MG6r-eaznQLWy8EMXQrWA",
+  authDomain: "branch-log.firebaseapp.com",
+  projectId: "branch-log",
+  storageBucket: "branch-log.firebasestorage.app",
+  messagingSenderId: "1022958210752",
+  appId: "1:1022958210752:web:1ceeb353c1e1976f66a725",
+  measurementId: "G-RJWVLH05RW"
+};
 
 self.addEventListener('install', (event) => {
   self.skipWaiting(); // activate the new version immediately, don't wait for old tabs to close
@@ -29,3 +42,76 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// Fires occasionally (browser's discretion) even if the app isn't open in a tab.
+// Reads branchId/currentUserId that index.html mirrors into IndexedDB via
+// syncCreds below, does a plain REST read of Firestore (no SDK needed in the
+// worker), and raises a local notification for anything new.
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'branch-log-check') {
+    event.waitUntil(checkForUpdates());
+  }
+});
+
+function idbGet(key) {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('branch-log-sw', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('kv', 'readonly');
+      const getReq = tx.objectStore('kv').get(key);
+      getReq.onsuccess = () => resolve(getReq.result);
+      getReq.onerror = () => resolve(null);
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+
+// NOTE: this plain REST fetch has no auth token, so it only works if your Firestore
+// security rules allow read access to branches/{branchId}/notifications without
+// sign-in. If your rules require auth, this fetch will fail silently (caught below)
+// and periodic checks simply won't find anything — the rest of the app is unaffected.
+async function checkForUpdates() {
+  try {
+    const branchId = await idbGet('branchId');
+    const userId = await idbGet('currentUserId');
+    const lastCheck = (await idbGet('lastPeriodicCheck')) || 0;
+    if (!branchId || !userId) return;
+
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/branches/${branchId}/notifications`;
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const docs = json.documents || [];
+
+    const fresh = docs.filter(d => {
+      const fields = d.fields || {};
+      const createdAtIso = fields.createdAt?.timestampValue;
+      const createdAtMs = createdAtIso ? new Date(createdAtIso).getTime() : 0;
+      const targets = (fields.targets?.arrayValue?.values || []).map(v => v.stringValue);
+      return createdAtMs > lastCheck && targets.includes(userId);
+    });
+
+    fresh.forEach(d => {
+      const fields = d.fields || {};
+      const message = fields.message?.stringValue || '';
+      self.registration.showNotification('📢 Branch Log', {
+        body: message,
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
+        vibrate: [300, 100, 300, 100, 300],
+        tag: 'branch-log-periodic-' + Date.now(),
+        requireInteraction: true
+      });
+    });
+
+    // Update lastPeriodicCheck
+    const dbReq = indexedDB.open('branch-log-sw', 1);
+    dbReq.onsuccess = () => {
+      const tx = dbReq.result.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(Date.now(), 'lastPeriodicCheck');
+    };
+  } catch (e) {
+    console.warn('Periodic check failed', e);
+  }
+}

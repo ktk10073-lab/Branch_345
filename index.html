@@ -390,6 +390,12 @@
     <div class="main-scroll" id="staffNotifList"></div>
   </div>
 
+  <!-- MANAGER NOTIFICATIONS -->
+  <div class="screen" id="screen-mgr-notifs">
+    <div class="form-top"><button class="x" data-close="mgr-overview">✕</button><h2>Notifications</h2></div>
+    <div class="main-scroll" id="mgrNotifList"></div>
+  </div>
+
   <!-- STAFF ADD ENTRY -->
   <div class="screen" id="screen-add-entry">
     <div class="form-top"><button class="x" data-close="staff-dash">✕</button><h2>New entry</h2></div>
@@ -462,6 +468,7 @@
       <div class="row-list">
         <div class="row"><div class="row-icon c-gold">🔔</div><div class="t">Assigned work alerts</div><button class="toggle on" data-toggle="notifAssigned"></button></div>
         <div class="row"><div class="row-icon c-gold">⏰</div><div class="t">Due-date reminders</div><button class="toggle on" data-toggle="notifDue"></button></div>
+        <button class="row" id="notifPermRow"><div class="row-icon c-blue">🔔</div><div><div class="t">Notification permission</div><div class="m" id="notifPermStatus">Checking…</div></div><span class="chev">›</span></button>
       </div>
       <div class="sectiontitle">Data</div>
       <div class="row-list">
@@ -480,7 +487,8 @@
   <!-- MANAGER OVERVIEW -->
   <div class="screen" id="screen-mgr-overview">
     <div class="db-top mgr-top">
-      <button class="avatar-btn gold" id="mgrAvatarBtn">D</button>
+      <button class="avatar-btn gold" id="mgrAvatarBtn" style="right:60px;">D</button>
+      <button class="avatar-btn" id="mgrNotifBtn" style="font-size:16px;">🔔<span id="mgrNotifBadge" style="display:none;position:absolute;top:-3px;right:-3px;background:var(--danger);color:#fff;border-radius:10px;font-size:8px;min-width:15px;height:15px;align-items:center;justify-content:center;font-weight:700;"></span></button>
       <div class="greet" id="mgrDateLabel">Today</div>
       <h2 id="mgrBranchLabel">Branch overview</h2>
       <div class="stats">
@@ -742,6 +750,30 @@ function genId(prefix){
   return prefix + '-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
 }
 
+/* ================= Wake Lock: keep screen/CPU active while app is open & unlocked =====
+   This does NOT work through a lock screen — the moment the OS locks the phone, the
+   Wake Lock is released automatically (this is enforced by the OS, not by us). Its
+   only job is to stop the *unlocked* phone from dimming/sleeping and freezing this tab
+   while the person is actively using other apps, which is the main reason live
+   Firestore listeners silently stop firing on Android even though the phone is unlocked. */
+let wakeLock = null;
+async function acquireWakeLock(){
+  if(!('wakeLock' in navigator)) return;
+  try{
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  }catch(e){ /* fails silently on many phones/battery-saver modes — non-fatal */ }
+}
+document.addEventListener('visibilitychange', async () => {
+  if(document.visibilityState === 'visible'){
+    acquireWakeLock();
+    // Re-arm periodic sync and re-sync creds every time the app comes back to the
+    // foreground — cheap, and guards against a stale/killed listener silently missing
+    // things while the tab was backgrounded.
+    registerPeriodicSync();
+  }
+});
+
 /* ================= PWA install prompt capture ================= */
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -768,6 +800,7 @@ $('#installAppBtn').onclick = async () => {
   }catch(e){
     console.warn('Install prompt failed', e);
   }
+  registerPeriodicSync();
   // Always advance, no matter what happened above — never leave the person stuck here.
   goToChooseSecurity(true);
 };
@@ -775,6 +808,7 @@ $('#skipInstallBtn').onclick = async () => {
   if('Notification' in window && Notification.permission === 'default'){
     try{ await Notification.requestPermission(); }catch(e){}
   }
+  registerPeriodicSync();
   goToChooseSecurity(true);
 };
 
@@ -791,6 +825,7 @@ async function boot(){
     }
     if(branchId && currentUserId){
       await loadBranch(branchId);  // now waits for first staff snapshot internally
+      registerPeriodicSync(); // best-effort, free — see comment above registerPeriodicSync
       const secMethod = localStorage.getItem('bl_secMethod_' + currentUserId);
       if(secMethod === 'webauthn'){
         goToUnlockBio();
@@ -913,6 +948,47 @@ async function ensureServiceWorker(){
   }catch(e){
     console.warn('Service worker registration failed', e);
     return null;
+  }
+}
+
+/* ================= Free best-effort background check (Periodic Background Sync) =================
+   No paid plan required. Chrome/Android + installed PWA only — Safari/iOS and desktop
+   browsers don't support this API and will simply skip it silently.
+   IMPORTANT — this is NOT real push: the browser decides when to run it (commonly
+   somewhere around every few hours, based on how often the person actually uses the
+   app), and it never fires while the app is closed AND the screen is locked/asleep —
+   only while the OS occasionally wakes background tasks. It narrows the closed-app
+   gap a little; it does not close it. True instant/locked-screen delivery needs a
+   real push server (Firebase Blaze + Cloud Functions + FCM).
+   Requires an `activate`/sync handler in firebase-messaging-sw.js pulling the same
+   Firestore query and calling self.registration.showNotification(...). */
+// Mirrors branchId/currentUserId into IndexedDB so the service worker (which can't
+// see localStorage) can read them during a periodicsync wake-up. Must match the
+// 'branch-log-sw' / 'kv' store names used in firebase-messaging-sw.js exactly.
+function syncCredsToServiceWorker(){
+  if(!branchId || !currentUserId) return;
+  try{
+    const req = indexedDB.open('branch-log-sw', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(branchId, 'branchId');
+      tx.objectStore('kv').put(currentUserId, 'currentUserId');
+    };
+  }catch(e){ console.warn('IndexedDB sync failed', e); }
+}
+async function registerPeriodicSync(){
+  syncCredsToServiceWorker();
+  if(!swRegistration) swRegistration = await ensureServiceWorker();
+  if(!swRegistration || !('periodicSync' in swRegistration)) return;
+  try{
+    const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+    if(status.state !== 'granted') return; // browser grants this automatically for well-used installed PWAs, not requestable on demand
+    await swRegistration.periodicSync.register('branch-log-check', {
+      minInterval: 12 * 60 * 60 * 1000 // 12 hours — the practical minimum most browsers allow
+    });
+  }catch(e){
+    console.warn('Periodic background sync not available', e);
   }
 }
 /* Loud alert tone generated in-browser — no audio file needed, works even if the
@@ -1050,6 +1126,7 @@ function listenEntries(){
     }
     entriesFirstLoad = false;
     renderAll();
+    updateMgrNotifBadge();
   });
 }
 function myNotifications(){
@@ -1066,6 +1143,68 @@ function updateNotifBadge(){
     badge.style.display = unread > 0 ? 'flex' : 'none';
     badge.textContent = unread;
   }
+}
+/* Manager activity feed: every reply added by staff on an assigned task, newest first.
+   Tracked with a single "last seen" timestamp rather than per-id, since this list is
+   derived live from entries/comments rather than its own Firestore collection. */
+function mgrActivityItems(){
+  const items = [];
+  entries.filter(e => e.type === 'assigned').forEach(e => {
+    (e.comments || []).forEach(c => {
+      if(c.from !== currentUserId){
+        items.push({
+          id: e.id + '-' + (c.at?.seconds || c.at) + '-' + (c.from||''),
+          entryId: e.id,
+          from: c.from,
+          text: c.text || '',
+          at: c.at,
+          task: e.task || ''
+        });
+      }
+    });
+  });
+  items.sort((a,b) => {
+    const av = a.at?.seconds ?? a.at ?? 0, bv = b.at?.seconds ?? b.at ?? 0;
+    return bv - av;
+  });
+  return items;
+}
+function updateMgrNotifBadge(){
+  if(!currentUser || !currentUser.isManager) return;
+  const items = mgrActivityItems();
+  const lastSeen = Number(localStorage.getItem('bl_mgrNotifSeenAt_' + currentUserId) || 0);
+  const unread = items.filter(it => (it.at?.seconds ?? it.at ?? 0) > lastSeen).length;
+  const badge = $('#mgrNotifBadge');
+  if(badge){
+    badge.style.display = unread > 0 ? 'flex' : 'none';
+    badge.textContent = unread;
+  }
+}
+function renderMgrNotifs(){
+  if(!currentUser || !currentUser.isManager) return;
+  const items = mgrActivityItems();
+  const wrap = $('#mgrNotifList');
+  if(!wrap) return;
+  if(items.length === 0){
+    wrap.innerHTML = '<div class="empty-state">No activity yet.</div>';
+  } else {
+    wrap.innerHTML = items.map(it => `
+      <div class="entry" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;gap:9px;">
+          <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(it.from))}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:12.5px;">${escapeHtml(staffName(it.from))} replied</div>
+            <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">on "${escapeHtml(it.task)}"</div>
+            <div style="font-size:12px;margin-top:5px;">${escapeHtml(it.text)}</div>
+            <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+  // Mark everything currently in the list as seen right now.
+  const nowVal = items.length ? (items[0].at?.seconds ?? items[0].at ?? Date.now()/1000) : Date.now()/1000;
+  localStorage.setItem('bl_mgrNotifSeenAt_' + currentUserId, String(nowVal));
+  updateMgrNotifBadge();
 }
 
 /* ================= Security: choose method ================= */
@@ -1265,6 +1404,8 @@ function goToDashboard(){
   else showScreen('staff-dash');
   renderAll();
   ensureServiceWorker(); // needed so background/tab-hidden notifications can display
+  acquireWakeLock(); // keep the tab alive/awake while phone is unlocked and app is in use
+  registerPeriodicSync();
 }
 
 /* ================= Nav wiring ================= */
@@ -1288,6 +1429,10 @@ $('#staffNotifBtn').onclick = () => {
   mine.forEach(n => seenIds.add(n.id));
   localStorage.setItem('bl_notifSeen_' + currentUserId, JSON.stringify([...seenIds]));
   updateNotifBadge();
+};
+$('#mgrNotifBtn').onclick = () => {
+  showScreen('mgr-notifs');
+  renderMgrNotifs();
 };
 function renderStaffNotifs(){
   const mine = myNotifications();
@@ -1908,6 +2053,8 @@ function renderAll(){
   const active = document.querySelector('.screen.active')?.id;
   if(active === 'screen-staff-dash') { renderStaffDash(); updateNotifBadge(); }
   if(active === 'screen-staff-notifs') renderStaffNotifs();
+  if(active === 'screen-mgr-notifs') renderMgrNotifs();
+  updateMgrNotifBadge();
   if(active === 'screen-staff-history') renderStaffHistory();
   if(active === 'screen-staff-profile') renderStaffProfile();
   if(active === 'screen-mgr-overview') renderMgrOverview();
@@ -1915,7 +2062,34 @@ function renderAll(){
   if(active === 'screen-mgr-pending') renderPending();
   if(active === 'screen-mgr-staff') renderStaffManage();
   if(active === 'screen-mgr-profile') renderMgrProfile();
+  if(active === 'screen-staff-settings') renderNotifPermRow();
 }
+
+/* ================= Notification permission status row (Settings) ================= */
+function renderNotifPermRow(){
+  const row = $('#notifPermStatus');
+  if(!row) return;
+  if(!('Notification' in window)){
+    row.textContent = 'Not supported on this browser';
+    return;
+  }
+  const state = Notification.permission;
+  if(state === 'granted') row.textContent = 'Enabled ✓';
+  else if(state === 'denied') row.textContent = 'Blocked — tap to see how to enable';
+  else row.textContent = 'Not enabled — tap to enable';
+}
+$('#notifPermRow').onclick = async () => {
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'default'){
+    try{ await Notification.requestPermission(); }catch(e){}
+    renderNotifPermRow();
+    if(Notification.permission === 'granted') acquireWakeLock();
+  } else if(Notification.permission === 'denied'){
+    toast('Blocked in browser settings — open site settings for this app and allow Notifications');
+  } else {
+    toast('Notifications are already enabled');
+  }
+};
 
 boot();
 </script>

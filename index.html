@@ -105,7 +105,7 @@
   .badge{font-size:8.5px;font-weight:700;padding:3px 6px;border-radius:20px;text-transform:uppercase;white-space:nowrap;margin-top:2px;flex-shrink:0;}
   .badge.assigned{background:#FBE8D2;color:#9C6A22;}
   .badge.visit{background:#DCEBE0;color:var(--ok);}
-  .badge.note{background:var(--lav-100);color:var(--lav-700);}
+  .badge.note{background:#DCEAFB;color:#3D6FA8;}
   .badge.pending{background:#FBE4DE;color:var(--danger);}
   .entry .body{flex:1;min-width:0;}
   .entry .body .t{font-size:12.5px;font-weight:600;}
@@ -119,11 +119,16 @@
   .navitem{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9.5px;color:var(--ink-soft);font-weight:600;background:none;border:none;padding:4px;}
   .navitem.active{color:var(--lav-600);}
   .navbar.mgr .navitem.active{color:var(--lav-700);}
-  .navicon{font-size:17px;}
+  .navicon{font-size:17px;filter:grayscale(0.3) opacity(0.75);transition:.15s;}
+  .navitem.active .navicon{filter:none;transform:scale(1.15);}
+  .navitem[data-nav="staff-history"] .navicon, .navitem[data-nav="mgr-pending"] .navicon{color:var(--warn);}
+  .navitem[data-nav="staff-profile"] .navicon, .navitem[data-nav="mgr-staff"] .navicon{color:#3D6FA8;}
+  .navitem[data-nav="staff-settings"] .navicon, .navitem[data-nav="mgr-profile"] .navicon{color:#7B5FA8;}
 
   /* ---- Form screens ---- */
   .form-top{padding:16px 18px;border-bottom:1px solid var(--lav-100);display:flex;align-items:center;gap:12px;flex-shrink:0;}
-  .form-top button.x{background:none;border:none;font-size:18px;color:var(--ink-soft);padding:0;}
+  .form-top button.x{background:var(--lav-100);border:none;font-size:16px;color:var(--lav-700);padding:0;
+    width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .form-top h2{font-size:15px;}
   .form-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;}
   .type-row{display:flex;gap:7px;}
@@ -161,6 +166,14 @@
   .chev{color:var(--ink-soft);font-size:13px;}
   .row.danger .t{color:var(--danger);}
   .row.danger .row-icon{background:#FBE4DE;}
+  .row-icon.c-blue{background:#DCEAFB;}
+  .row-icon.c-green{background:#DCEBE0;}
+  .row-icon.c-gold{background:#FBE8D2;}
+  .row-icon.c-pink{background:#FBE0EC;}
+  .row-icon.c-purple{background:#E7DDF7;}
+  .row-icon.c-red{background:#FBE4DE;}
+  .row-icon.c-teal{background:#D9F0EC;}
+
   .badge-mini{font-size:8.5px;font-weight:700;background:var(--ok);color:#fff;padding:2px 6px;border-radius:20px;}
   .toggle{width:38px;height:22px;border-radius:20px;background:var(--lav-200);position:relative;flex-shrink:0;border:none;padding:0;}
   .toggle.on{background:var(--lav-600);}
@@ -295,11 +308,11 @@
     </div>
     <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
       <button class="row" id="useBiometricBtn" style="padding:16px;">
-        <div class="row-icon" style="width:40px;height:40px;font-size:19px;">👆</div>
+        <div class="row-icon c-blue" style="width:40px;height:40px;font-size:19px;">👆</div>
         <div><div class="t">Use phone security</div><div class="m">Fingerprint, face, or screen lock — whatever this phone already uses</div></div>
       </button>
       <button class="row" id="usePatternBtn" style="padding:16px;">
-        <div class="row-icon" style="width:40px;height:40px;font-size:19px;">⠿</div>
+        <div class="row-icon c-purple" style="width:40px;height:40px;font-size:19px;">⠿</div>
         <div><div class="t">Use a pattern instead</div><div class="m">Draw a simple 3×3 pattern</div></div>
       </button>
     </div>
@@ -426,7 +439,7 @@
     <div class="main-scroll">
       <div class="sectiontitle">Security</div>
       <div class="row-list">
-        <button class="row" id="changeSecurityBtn"><div class="row-icon">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="currentSecMethod">Pattern</div></div><span class="chev">›</span></button>
+        <button class="row" id="changeSecurityBtn"><div class="row-icon c-purple">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="currentSecMethod">Pattern</div></div><span class="chev">›</span></button>
       </div>
       <div class="sectiontitle">Account</div>
       <div class="row-list">
@@ -447,13 +460,13 @@
     <div class="main-scroll">
       <div class="sectiontitle">Notifications</div>
       <div class="row-list">
-        <div class="row"><div class="row-icon">🔔</div><div class="t">Assigned work alerts</div><button class="toggle on" data-toggle="notifAssigned"></button></div>
-        <div class="row"><div class="row-icon">⏰</div><div class="t">Due-date reminders</div><button class="toggle on" data-toggle="notifDue"></button></div>
+        <div class="row"><div class="row-icon c-gold">🔔</div><div class="t">Assigned work alerts</div><button class="toggle on" data-toggle="notifAssigned"></button></div>
+        <div class="row"><div class="row-icon c-gold">⏰</div><div class="t">Due-date reminders</div><button class="toggle on" data-toggle="notifDue"></button></div>
       </div>
       <div class="sectiontitle">Data</div>
       <div class="row-list">
-        <div class="row"><div class="row-icon">☁️</div><div><div class="t">Sync status</div><div class="m" id="syncStatusText" style="color:var(--ok);">Connected</div></div></div>
-        <div class="row"><div class="row-icon">ℹ️</div><div><div class="t">About Branch Log</div><div class="m">Version 2.0</div></div></div>
+        <div class="row"><div class="row-icon c-blue">☁️</div><div><div class="t">Sync status</div><div class="m" id="syncStatusText" style="color:var(--ok);">Connected</div></div></div>
+        <div class="row"><div class="row-icon c-teal">ℹ️</div><div><div class="t">About Branch Log</div><div class="m">Version 2.0</div></div></div>
       </div>
     </div>
     <div class="navbar">
@@ -572,6 +585,14 @@
     </div>
   </div>
 
+  <!-- MANAGER: EDIT ENTRY -->
+  <div class="screen" id="screen-edit-entry">
+    <div class="form-top"><button class="x" data-close="mgr-overview">✕</button><h2>Edit entry</h2></div>
+    <div class="form-body" id="editEntryFormBody">
+      <!-- fields injected dynamically based on entry type -->
+    </div>
+  </div>
+
   <!-- MANAGER: ADD STAFF (generates invite link) -->
   <div class="screen" id="screen-add-staff">
     <div class="form-top"><button class="x" data-close="mgr-staff">✕</button><h2>Add staff member</h2></div>
@@ -613,11 +634,11 @@
     <div class="main-scroll">
       <div class="sectiontitle">Reports</div>
       <div class="row-list">
-        <div class="row"><div class="row-icon">📊</div><div><div class="t">Weekly summary</div><div class="m" id="weeklyTotalLabel">–</div></div></div>
+        <div class="row"><div class="row-icon c-green">📊</div><div><div class="t">Weekly summary</div><div class="m" id="weeklyTotalLabel">–</div></div></div>
       </div>
       <div class="sectiontitle">Security</div>
       <div class="row-list">
-        <button class="row" id="mgrChangeSecurityBtn"><div class="row-icon">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="mgrCurrentSecMethod">Pattern</div></div><span class="chev">›</span></button>
+        <button class="row" id="mgrChangeSecurityBtn"><div class="row-icon c-purple">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="mgrCurrentSecMethod">Pattern</div></div><span class="chev">›</span></button>
       </div>
       <div class="sectiontitle">Account</div>
       <div class="row-list">
@@ -759,6 +780,7 @@ $('#skipInstallBtn').onclick = async () => {
 
 /* ================= Boot ================= */
 async function boot(){
+  ensureServiceWorker(); // register early so update-checks happen on every app open, even pre-login
   const params = new URLSearchParams(window.location.search);
   inviteCode = params.get('invite');
 
@@ -875,6 +897,18 @@ async function ensureServiceWorker(){
   if(!('serviceWorker' in navigator)) return null;
   try{
     swRegistration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    // Force a check for a newer version of the service worker file every time the
+    // app opens — this is what lets updated code reach phones without a manual reinstall.
+    swRegistration.update().catch(()=>{});
+    // Once a new service worker takes control (activates), reload once to pick up the
+    // new index.html/app code. This preserves localStorage and Firestore data — it only
+    // refreshes which files are cached/served.
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(refreshed) return;
+      refreshed = true;
+      window.location.reload();
+    });
     return swRegistration;
   }catch(e){
     console.warn('Service worker registration failed', e);
@@ -940,16 +974,18 @@ function showNotifBanner(title, body){
   const banner = document.createElement('div');
   banner.id = 'liveNotifBanner';
   banner.style.cssText = `position:fixed;top:12px;left:50%;transform:translateX(-50%);width:calc(100% - 32px);
-    max-width:448px;background:var(--lav-700);color:#fff;border-radius:16px;padding:14px 16px;
-    box-shadow:0 10px 30px rgba(46,38,64,0.35);z-index:2000;display:flex;gap:11px;align-items:flex-start;
-    animation:bannerIn .25s ease;`;
+    max-width:448px;background:linear-gradient(135deg,var(--lav-700),#332755);color:#fff;border-radius:18px;padding:14px 16px;
+    box-shadow:0 14px 34px rgba(46,38,64,0.4);z-index:2000;display:flex;gap:12px;align-items:flex-start;
+    animation:bannerIn .25s ease;border:1px solid rgba(255,255,255,0.12);`;
   banner.innerHTML = `
-    <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🔔</div>
-    <div style="flex:1;min-width:0;">
-      <div style="font-weight:700;font-size:13px;">${escapeHtml(title)}</div>
-      <div style="font-size:12px;color:var(--lav-100);margin-top:2px;">${escapeHtml(body)}</div>
+    <div style="width:36px;height:36px;border-radius:11px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:8px;">
+      <svg viewBox="0 0 24 24" fill="white" style="width:100%;height:100%;"><path d="M12 2L2 9h20L12 2zM4 10v9H2v2h20v-2h-2v-9h-2v9h-3v-9h-2v9h-3v-9H8v9H6v-9H4z"/></svg>
     </div>
-    <button style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:16px;padding:0;flex-shrink:0;">✕</button>`;
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:800;font-size:13px;font-family:'Manrope',sans-serif;letter-spacing:-.01em;">${escapeHtml(title)}</div>
+      <div style="font-size:12px;color:var(--lav-100);margin-top:3px;line-height:1.4;">${escapeHtml(body)}</div>
+    </div>
+    <button style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:16px;padding:0;flex-shrink:0;">✕</button>`;
   banner.querySelector('button').onclick = () => banner.remove();
   document.body.appendChild(banner);
   setTimeout(() => { if(banner.parentNode) banner.remove(); }, 6000);
@@ -962,7 +998,7 @@ function listenNotifications(){
     notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if(!notifFirstLoad && currentUser && !currentUser.isManager){
       const fresh = notifications.filter(n => !prevIds.has(n.id) && n.targets?.includes(currentUserId));
-      fresh.forEach(n => fireLocalNotification('Message from ' + (staffName(n.from) || 'Manager'), n.message || ''));
+      fresh.forEach(n => fireLocalNotification('📢 ' + (staffName(n.from) || 'Manager') + ' — Branch Log', n.message || ''));
     }
     notifFirstLoad = false;
     renderAll();
@@ -981,7 +1017,7 @@ function listenEntries(){
         entries.forEach(e => {
           const isNew = !prevById.has(e.id);
           if(isNew && e.type === 'assigned' && e.assignedTo === currentUserId){
-            fireLocalNotification('New task assigned', e.task || '');
+            fireLocalNotification('🗂️ New task assigned', e.task || '');
           }
           // New comment added to one of my tasks, from someone else
           if(!isNew && e.type === 'assigned' && e.assignedTo === currentUserId){
@@ -990,7 +1026,7 @@ function listenEntries(){
             if(nowCount > prevCount){
               const latest = e.comments[e.comments.length - 1];
               if(latest && latest.from !== currentUserId){
-                fireLocalNotification('New comment on your task', latest.text || '');
+                fireLocalNotification('💬 New reply on your task', latest.text || '');
               }
             }
           }
@@ -1005,7 +1041,7 @@ function listenEntries(){
             if(nowCount > prevCount){
               const latest = e.comments[e.comments.length - 1];
               if(latest && latest.from !== currentUserId){
-                fireLocalNotification(staffName(e.assignedTo) + ' replied', latest.text || '');
+                fireLocalNotification('💬 ' + staffName(e.assignedTo) + ' replied', latest.text || '');
               }
             }
           }
@@ -1265,11 +1301,12 @@ function renderStaffNotifs(){
     const repliesHtml = replies.map(r => `
       <div style="background:var(--lav-100);border-radius:10px;padding:8px 10px;margin-top:6px;font-size:12px;">
         <b style="color:var(--lav-700);">You replied:</b> ${escapeHtml(r.text)}
+        <div style="font-size:10px;color:var(--ink-soft);margin-top:3px;">${fmtDate(r.at)}, ${fmtTime(r.at)}</div>
       </div>`).join('');
     return `
     <div class="entry" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;gap:9px;">
-        <div class="row-icon" style="background:var(--lav-100);flex-shrink:0;">📢</div>
+        <div class="row-icon c-pink" style="flex-shrink:0;">📢</div>
         <div class="body"><div class="t">Message from ${escapeHtml(staffName(n.from) || 'Manager')}</div>
         <div class="m">${escapeHtml(n.message||'')}</div>
         <div class="m" style="margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div></div>
@@ -1356,6 +1393,7 @@ function renderStaffDash(){
       const commentsHtml = comments.map(c => `
         <div style="background:${c.from===currentUserId?'var(--lav-100)':'#fff'};border:1px solid var(--lav-100);border-radius:10px;padding:7px 9px;margin-top:5px;font-size:11.5px;">
           <b style="color:var(--lav-700);">${c.from===currentUserId?'You':escapeHtml(staffName(c.from))}:</b> ${escapeHtml(c.text)}
+          <div style="font-size:10px;color:var(--ink-soft);margin-top:3px;">${fmtDate(c.at)}, ${fmtTime(c.at)}</div>
         </div>`).join('');
       return `
       <div class="entry" style="flex-direction:column;align-items:stretch;">
@@ -1521,10 +1559,84 @@ function renderMgrOverview(){
       const text = e.type==='assigned' ? e.task : `${e.customer? e.customer+' — ':''}${e.detail||''}`;
       const commentCount = e.comments ? e.comments.length : 0;
       const commentTag = commentCount > 0 ? ` <span style="color:var(--lav-600);font-weight:700;">💬 ${commentCount}</span>` : '';
-      return `<button class="entry" style="width:100%;border:1px solid var(--lav-100);text-align:left;font-family:inherit;" data-feed-drill="${e.type==='assigned'?e.assignedTo:e.staffId}">${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}</div><div class="m">${fmtTime(e.createdAt)}</div></div></button>`;
+      return `<div class="entry" style="width:100%;border:1px solid var(--lav-100);">
+        <button style="all:unset;display:flex;gap:9px;flex:1;min-width:0;cursor:pointer;" data-feed-drill="${e.type==='assigned'?e.assignedTo:e.staffId}">
+          ${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}</div><div class="m">${fmtTime(e.createdAt)}</div></div>
+        </button>
+        <button data-feed-edit="${e.id}" style="background:none;border:none;color:var(--lav-600);font-size:14px;padding:2px 6px;flex-shrink:0;">✏️</button>
+        <button data-feed-delete="${e.id}" style="background:none;border:none;color:var(--ink-soft);font-size:15px;padding:2px 4px;flex-shrink:0;">✕</button>
+      </div>`;
     }).join('');
     $$('[data-feed-drill]', feedList).forEach(btn => { btn.onclick = () => openDrilldown(btn.dataset.feedDrill); });
+    $$('[data-feed-edit]', feedList).forEach(btn => {
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        openEditEntry(btn.dataset.feedEdit);
+      };
+    });
+    $$('[data-feed-delete]', feedList).forEach(btn => {
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        confirmDeleteFeedEntry(btn.dataset.feedDelete);
+      };
+    });
   }
+}
+function confirmDeleteFeedEntry(entryId){
+  $('#modalSheet').innerHTML = `
+    <div style="padding:30px 24px;text-align:center;">
+      <div style="width:56px;height:56px;border-radius:50%;background:#FBE4DE;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;">🗑️</div>
+      <h2 style="font-size:16px;margin-bottom:8px;">Delete this entry?</h2>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.5;max-width:280px;margin:0 auto 18px;">
+        This removes it from the feed and reports permanently. This can't be undone.
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button id="modalCancel" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-100);color:var(--lav-700);">Cancel</button>
+        <button id="modalConfirmDelete" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--danger);color:#fff;">Delete</button>
+      </div>
+    </div>`;
+  $('#modalOverlay').classList.add('active');
+  $('#modalCancel').onclick = closeModal;
+  $('#modalConfirmDelete').onclick = async () => {
+    await deleteDoc(doc(db, 'branches', branchId, 'entries', entryId));
+    closeModal();
+    toast('Entry deleted');
+  };
+}
+
+let editingEntryId = null;
+function openEditEntry(entryId){
+  const e = entries.find(x => x.id === entryId);
+  if(!e) return;
+  editingEntryId = entryId;
+  const body = $('#editEntryFormBody');
+  if(e.type === 'assigned'){
+    body.innerHTML = `
+      <div><label>Task</label><textarea class="field" id="editTaskText" style="margin-bottom:0;">${escapeHtml(e.task||'')}</textarea></div>
+      <div><label>Due date</label><input class="field" type="date" id="editTaskDue" style="margin-bottom:0;" value="${e.dueDate||''}"></div>
+      <button class="savebtn" id="editEntrySaveBtn">Save changes</button>`;
+  } else {
+    body.innerHTML = `
+      <div><label>Customer / party name</label><input class="field" id="editEntryCustomer" style="margin-bottom:0;" value="${escapeHtml(e.customer||'')}"></div>
+      <div><label>Details</label><textarea class="field" id="editEntryDetail" style="margin-bottom:0;">${escapeHtml(e.detail||'')}</textarea></div>
+      <button class="savebtn" id="editEntrySaveBtn">Save changes</button>`;
+  }
+  showScreen('edit-entry');
+  $('#editEntrySaveBtn').onclick = async () => {
+    if(e.type === 'assigned'){
+      const task = $('#editTaskText').value.trim();
+      const dueDate = $('#editTaskDue').value;
+      if(!task){ toast('Task description required'); return; }
+      await updateDoc(doc(db, 'branches', branchId, 'entries', entryId), { task, dueDate });
+    } else {
+      const customer = $('#editEntryCustomer').value.trim();
+      const detail = $('#editEntryDetail').value.trim();
+      if(!detail){ toast('Details required'); return; }
+      await updateDoc(doc(db, 'branches', branchId, 'entries', entryId), { customer, detail });
+    }
+    toast('Entry updated');
+    showScreen('mgr-overview');
+  };
 }
 $$('#mgrFilters .chip').forEach(chip => {
   chip.onclick = () => {
@@ -1564,6 +1676,7 @@ function renderDrilldown(){
         const comments = (e.comments || []).map(c => `
           <div style="background:var(--lav-100);border-radius:8px;padding:6px 9px;margin-top:4px;font-size:11px;">
             <b style="color:var(--lav-700);">${escapeHtml(staffName(c.from))}:</b> ${escapeHtml(c.text)}
+            <div style="font-size:9.5px;color:var(--ink-soft);margin-top:2px;">${fmtDate(c.at)}, ${fmtTime(c.at)}</div>
           </div>`).join('');
         return `<div class="entry" style="flex-direction:column;align-items:stretch;">
           <div style="display:flex;gap:9px;">${e.status==='done'?entryBadge('assigned'):'<span class="badge pending">Pending</span>'}

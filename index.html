@@ -749,12 +749,33 @@ let notifPrefs = JSON.parse(localStorage.getItem('bl_notifPrefs') || '{"notifAss
 const $ = (sel, root=document) => root.querySelector(sel);
 const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-function showScreen(id){
+function showScreen(id, opts){
   $$('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById('screen-' + id);
   if(el) el.classList.add('active');
   window.scrollTo(0,0);
+  if(!opts || !opts.skipHistory){
+    // Bottom-nav tabs (Overview/Pending/Staff/More, etc.) replace the current history
+    // entry instead of stacking — they're peers, not a "drill in". Everything else
+    // (opening a form, drilldown, settings, etc.) pushes a real entry so the Android/
+    // browser back button steps back through the screens the person actually visited,
+    // instead of exiting the app immediately (which was the bug: with zero history
+    // entries pushed, there was nothing for "back" to consume).
+    const isTabSwitch = !!opts?.tab;
+    if(isTabSwitch) history.replaceState({ screen: id }, '', location.pathname + location.search);
+    else history.pushState({ screen: id }, '', location.pathname + location.search);
+  }
 }
+window.addEventListener('popstate', (e) => {
+  const screenId = e.state?.screen;
+  if(screenId){
+    showScreen(screenId, { skipHistory: true });
+    renderAll();
+  }
+  // If there's no state left, there's nothing more to intercept — let the browser/
+  // OS handle it natively (this is the point where the app is actually meant to exit
+  // or hand back to whatever opened it, e.g. closing the PWA from its home screen).
+});
 function toast(msg){
   const t = $('#toast');
   t.textContent = msg;
@@ -1386,10 +1407,47 @@ function renderMgrNotifs(){
     $$('[data-notif-delete]', wrap).forEach(btn => {
       btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.notifDelete); };
     });
+    $$('[data-notif-detail]', wrap).forEach(el => {
+      el.onclick = (ev) => { ev.stopPropagation(); openNotifDetail(el.dataset.notifDetail); };
+    });
+    $$('[data-notif-detail]', wrap).forEach(el => {
+      el.onclick = (ev) => { ev.stopPropagation(); openNotifDetail(el.dataset.notifDetail); };
+    });
     const markAllBtn = $('#mgrMarkAllSeenBtn');
     if(markAllBtn) markAllBtn.onclick = () => { markAllMgrSeen(); renderMgrNotifs(); };
   }
   updateMgrNotifBadge();
+}
+/* Tap a "sent by you" card to see exactly who has/hasn't opened it — full name list,
+   not just the X/Y count, with the time each person saw it where known. */
+function openNotifDetail(notifId){
+  const n = notifications.find(x => x.id === notifId);
+  if(!n) return;
+  const targets = n.targets || [];
+  const seenByMap = n.seenBy || {};
+  const rows = targets.map(t => {
+    const seenAt = seenByMap[t];
+    const timeStr = seenAt ? `${fmtDate(seenAt)}, ${fmtTime(seenAt)}` : 'Not seen yet';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--lav-100);">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div class="s-avatar" style="width:32px;height:32px;font-size:11px;">${initials(staffName(t))}</div>
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(staffName(t))}</div>
+      </div>
+      <div style="font-size:11px;text-align:right;color:${seenAt ? 'var(--lav-600)' : 'var(--ink-soft)'};font-weight:${seenAt?700:500};">
+        ${seenAt ? '✓✓ Seen' : '✓ Delivered'}<br><span style="font-size:9.5px;">${timeStr}</span>
+      </div>
+    </div>`;
+  }).join('');
+  $('#modalSheet').innerHTML = `
+    <div style="padding:24px;">
+      <h2 style="font-size:15px;margin-bottom:4px;">${escapeHtml(n.message||'')}</h2>
+      <p style="font-size:11px;color:var(--ink-soft);margin:0 0 14px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)} · ${targets.length} recipient${targets.length===1?'':'s'}</p>
+      <div>${rows || '<div class="empty-state">No recipients.</div>'}</div>
+      <button id="modalCancel" style="margin-top:16px;width:100%;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-100);color:var(--lav-700);">Close</button>
+    </div>`;
+  $('#modalOverlay').classList.add('active');
+  $('#modalCancel').onclick = closeModal;
 }
 function confirmDeleteNotification(notifId){
   $('#modalSheet').innerHTML = `
@@ -1607,8 +1665,11 @@ $('#switchUserLink').onclick = () => {
 function goToDashboard(){
   localStorage.setItem('bl_branchId', branchId);
   localStorage.setItem('bl_currentUserId', currentUserId);
-  if(currentUser?.isManager) showScreen('mgr-overview');
-  else showScreen('staff-dash');
+  // This is the app's "home" — replace history here (not push) so it becomes the
+  // floor of the back-stack. One more back press from here exits the app, which is
+  // the correct, expected behavior for a home/root screen.
+  if(currentUser?.isManager) showScreen('mgr-overview', { tab: true });
+  else showScreen('staff-dash', { tab: true });
   renderAll();
   ensureServiceWorker(); // needed so background/tab-hidden notifications can display
   acquireWakeLock(); // keep the tab alive/awake while phone is unlocked and app is in use
@@ -1620,13 +1681,25 @@ function goToDashboard(){
 $$('[data-nav]').forEach(btn => {
   btn.onclick = () => {
     const target = btn.dataset.nav;
-    showScreen(target);
+    showScreen(target, { tab: true });
     $$('.navitem').forEach(n => n.classList.remove('active'));
     $$(`[data-nav="${target}"]`).forEach(n => n.classList.add('active'));
     renderAll();
   };
 });
-$$('[data-close]').forEach(btn => { btn.onclick = () => { showScreen(btn.dataset.close); renderAll(); }; });
+$$('[data-close]').forEach(btn => {
+  btn.onclick = () => {
+    // These are "X"/back buttons closing a form/sub-screen — prefer popping the real
+    // history entry (so it lines up with what a physical back press would do) and
+    // fall back to a direct jump if there's nothing to pop for some reason.
+    if(history.state?.screen && history.state.screen !== btn.dataset.close){
+      history.back();
+    } else {
+      showScreen(btn.dataset.close);
+    }
+    renderAll();
+  };
+});
 $('#staffAvatarBtn').onclick = () => { showScreen('staff-profile'); renderAll(); };
 $('#mgrAvatarBtn').onclick = () => { showScreen('mgr-profile'); renderAll(); };
 $('#staffNotifBtn').onclick = () => {
@@ -1952,7 +2025,7 @@ function renderMgrOverview(){
     const tick = allSeen ? '<span style="color:var(--lav-600);font-weight:700;">✓✓ Seen</span>' : seenCount > 0 ? `<span style="color:var(--lav-600);font-weight:700;">✓✓ ${seenCount}/${targets.length}</span>` : '<span style="color:#9CA3AF;font-weight:700;">✓ Sent</span>';
     const kindLabel = n.kind === 'task_edited' ? '✏️ Task update' : n.kind === 'task_deleted' ? '🗑️ Task removed' : '📢 You sent';
     return `
-    <div class="entry">
+    <div class="entry" data-notif-detail="${n.id}" style="cursor:pointer;">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;justify-content:space-between;gap:8px;">
           <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
@@ -1987,6 +2060,9 @@ function renderMgrOverview(){
     previewWrap.innerHTML = sentPreviewHtml + replyPreviewHtml;
     $$('[data-ov-notif-delete]', previewWrap).forEach(btn => {
       btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.ovNotifDelete); };
+    });
+    $$('[data-notif-detail]', previewWrap).forEach(el => {
+      el.onclick = () => openNotifDetail(el.dataset.notifDetail);
     });
   }
 

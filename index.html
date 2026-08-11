@@ -476,6 +476,7 @@
         <div class="row"><div class="row-icon c-gold">⏰</div><div class="t">Due-date reminders</div><button class="toggle on" data-toggle="notifDue"></button></div>
         <button class="row" id="notifPermRow"><div class="row-icon c-blue">🔔</div><div><div class="t">Notification permission</div><div class="m" id="notifPermStatus">Checking…</div></div><span class="chev">›</span></button>
       </div>
+      <p style="font-size:11px;color:var(--ink-soft);padding:6px 4px 0;line-height:1.5;">Notifications work while the app is open or recently used. Keep it open in the background for the best results — this app does not yet support alerts when fully closed.</p>
       <div class="sectiontitle">Data</div>
       <div class="row-list">
         <div class="row"><div class="row-icon c-blue">☁️</div><div><div class="t">Sync status</div><div class="m" id="syncStatusText" style="color:var(--ok);">Connected</div></div></div>
@@ -1207,16 +1208,18 @@ function updateNotifBadge(){
     badge.textContent = unread;
   }
 }
-/* Manager activity feed: every reply added by staff on an assigned task, newest first.
-   Tracked with a single "last seen" timestamp rather than per-id, since this list is
-   derived live from entries/comments rather than its own Firestore collection. */
+/* Manager activity feed: staff replies on assigned tasks, newest first. Each item
+   gets a stable, content-derived id and is tracked individually in localStorage —
+   NOT auto-marked seen just by opening the screen. This means the badge count only
+   drops for items the manager has actually tapped/expanded, which is what makes
+   "seen or not" trustworthy instead of a blanket "opened the screen once" flag. */
 function mgrActivityItems(){
   const items = [];
   entries.filter(e => e.type === 'assigned').forEach(e => {
     (e.comments || []).forEach(c => {
       if(c.from !== currentUserId){
         items.push({
-          id: e.id + '-' + (c.at?.seconds || c.at) + '-' + (c.from||''),
+          id: 'reply-' + e.id + '-' + (c.at?.seconds || c.at) + '-' + (c.from||''),
           entryId: e.id,
           from: c.from,
           text: c.text || '',
@@ -1232,11 +1235,26 @@ function mgrActivityItems(){
   });
   return items;
 }
+function mgrSeenIds(){
+  return new Set(JSON.parse(localStorage.getItem('bl_mgrSeenIds_' + currentUserId) || '[]'));
+}
+function markMgrSeen(id){
+  const seen = mgrSeenIds();
+  seen.add(id);
+  localStorage.setItem('bl_mgrSeenIds_' + currentUserId, JSON.stringify([...seen]));
+  updateMgrNotifBadge();
+}
+function markAllMgrSeen(){
+  const seen = mgrSeenIds();
+  mgrActivityItems().forEach(it => seen.add(it.id));
+  localStorage.setItem('bl_mgrSeenIds_' + currentUserId, JSON.stringify([...seen]));
+  updateMgrNotifBadge();
+}
 function updateMgrNotifBadge(){
   if(!currentUser || !currentUser.isManager) return;
   const items = mgrActivityItems();
-  const lastSeen = Number(localStorage.getItem('bl_mgrNotifSeenAt_' + currentUserId) || 0);
-  const unread = items.filter(it => (it.at?.seconds ?? it.at ?? 0) > lastSeen).length;
+  const seen = mgrSeenIds();
+  const unread = items.filter(it => !seen.has(it.id)).length;
   const badge = $('#mgrNotifBadge');
   if(badge){
     badge.style.display = unread > 0 ? 'flex' : 'none';
@@ -1246,29 +1264,69 @@ function updateMgrNotifBadge(){
 function renderMgrNotifs(){
   if(!currentUser || !currentUser.isManager) return;
   const items = mgrActivityItems();
+  const seen = mgrSeenIds();
   const wrap = $('#mgrNotifList');
   if(!wrap) return;
-  if(items.length === 0){
-    wrap.innerHTML = '<div class="empty-state">No activity yet.</div>';
-  } else {
-    wrap.innerHTML = items.map(it => `
+
+  // Section 1: broadcasts/system messages the manager sent, with real per-staff read
+  // receipts (WhatsApp-style ticks), sourced straight from Firestore's seenBy map —
+  // this is the actual "does staff know or not" answer, not a local guess.
+  const sent = notifications.filter(n => n.from === currentUserId).slice(0, 15);
+  const sentHtml = sent.length === 0 ? '' : `
+    <div class="sectiontitle" style="margin-top:4px;">Sent by you</div>
+    ${sent.map(n => {
+      const targets = n.targets || [];
+      const seenByMap = n.seenBy || {};
+      const seenCount = targets.filter(t => seenByMap[t]).length;
+      const allSeen = targets.length > 0 && seenCount === targets.length;
+      const tick = allSeen ? '<span style="color:var(--lav-600);font-weight:700;">✓✓ Seen</span>' : seenCount > 0 ? `<span style="color:var(--lav-600);font-weight:700;">✓✓ Seen by ${seenCount}/${targets.length}</span>` : '<span style="color:#9CA3AF;font-weight:700;">✓ Sent</span>';
+      const kindLabel = n.kind === 'task_edited' ? '✏️ Task update' : n.kind === 'task_deleted' ? '🗑️ Task removed' : '📢 Broadcast';
+      const perRecipient = targets.map(t => `<span style="display:inline-block;margin:3px 6px 0 0;font-size:10px;padding:3px 7px;border-radius:8px;background:${seenByMap[t] ? 'var(--lav-100)' : '#F1F1F3'};color:${seenByMap[t] ? 'var(--lav-700)' : '#8A8A93'};">${escapeHtml(staffName(t))} ${seenByMap[t] ? '✓✓' : '✓'}</span>`).join('');
+      return `
       <div class="entry" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
+          ${tick}
+        </div>
+        <div style="font-size:12px;margin-top:4px;">${escapeHtml(n.message||'')}</div>
+        <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
+        <div style="margin-top:6px;">${perRecipient}</div>
+      </div>`;
+    }).join('')}`;
+
+  // Section 2: replies from staff, tracked with local per-item seen state.
+  const repliesHtml = items.length === 0 ? '' : `
+    <div class="sectiontitle" style="margin-top:4px;">Replies</div>
+    <div style="padding:2px 4px 8px;"><button id="mgrMarkAllSeenBtn" style="background:var(--lav-100);color:var(--lav-700);border:none;border-radius:10px;padding:8px 12px;font-weight:700;font-size:11.5px;">Mark all as seen</button></div>
+    ${items.map(it => {
+      const unread = !seen.has(it.id);
+      return `
+      <div class="entry" style="flex-direction:column;align-items:stretch;${unread ? 'border-left:3px solid var(--gold);' : ''}" data-mgr-notif="${it.id}">
         <div style="display:flex;gap:9px;">
           <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(it.from))}</div>
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:12.5px;">${escapeHtml(staffName(it.from))} replied</div>
+            <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(it.from))} replied</div>
             <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">on "${escapeHtml(it.task)}"</div>
             <div style="font-size:12px;margin-top:5px;">${escapeHtml(it.text)}</div>
-            <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}</div>
+            <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}${unread ? ' · tap to mark seen' : ' · seen'}</div>
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('')}`;
+
+  if(!sentHtml && !repliesHtml){
+    wrap.innerHTML = '<div class="empty-state">No activity yet.</div>';
+  } else {
+    wrap.innerHTML = sentHtml + repliesHtml;
+    $$('[data-mgr-notif]', wrap).forEach(el => {
+      el.onclick = () => { markMgrSeen(el.dataset.mgrNotif); renderMgrNotifs(); };
+    });
+    const markAllBtn = $('#mgrMarkAllSeenBtn');
+    if(markAllBtn) markAllBtn.onclick = () => { markAllMgrSeen(); renderMgrNotifs(); };
   }
-  // Mark everything currently in the list as seen right now.
-  const nowVal = items.length ? (items[0].at?.seconds ?? items[0].at ?? Date.now()/1000) : Date.now()/1000;
-  localStorage.setItem('bl_mgrNotifSeenAt_' + currentUserId, String(nowVal));
   updateMgrNotifBadge();
 }
+
 
 /* ================= Security: choose method ================= */
 function goToChooseSecurity(firstTime){
@@ -1489,7 +1547,14 @@ $('#staffNotifBtn').onclick = () => {
   renderStaffNotifs();
   const mine = myNotifications();
   const seenIds = new Set(JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]'));
-  mine.forEach(n => seenIds.add(n.id));
+  mine.forEach(n => {
+    seenIds.add(n.id);
+    // Write to Firestore too, not just localStorage — this is what lets the MANAGER's
+    // device see the tick, since localStorage never leaves this phone.
+    if(!n.seenBy || !n.seenBy[currentUserId]){
+      updateDoc(doc(db,'branches',branchId,'notifications',n.id), { [`seenBy.${currentUserId}`]: serverTimestamp() }).catch(()=>{});
+    }
+  });
   localStorage.setItem('bl_notifSeen_' + currentUserId, JSON.stringify([...seenIds]));
   updateNotifBadge();
 };
@@ -1499,12 +1564,15 @@ $('#mgrNotifBtn').onclick = () => {
 };
 function renderStaffNotifs(){
   const mine = myNotifications();
+  const seenIds = new Set(JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]'));
   const wrap = $('#staffNotifList');
   if(mine.length === 0){
     wrap.innerHTML = '<div class="empty-state">No notifications yet.</div>';
     return;
   }
   wrap.innerHTML = `<div class="entry-list" style="padding-top:14px;padding-bottom:20px;">` + mine.map(n => {
+    const unread = !seenIds.has(n.id);
+    const kindLabel = n.kind === 'task_edited' ? '✏️ Task updated' : n.kind === 'task_deleted' ? '🗑️ Task removed' : `📢 Message from ${escapeHtml(staffName(n.from) || 'Manager')}`;
     const replies = (n.replies || []).filter(r => r.from === currentUserId);
     const repliesHtml = replies.map(r => `
       <div style="background:var(--lav-100);border-radius:10px;padding:8px 10px;margin-top:6px;font-size:12px;">
@@ -1512,10 +1580,10 @@ function renderStaffNotifs(){
         <div style="font-size:10px;color:var(--ink-soft);margin-top:3px;">${fmtDate(r.at)}, ${fmtTime(r.at)}</div>
       </div>`).join('');
     return `
-    <div class="entry" style="flex-direction:column;align-items:stretch;">
+    <div class="entry" style="flex-direction:column;align-items:stretch;${unread ? 'border-left:3px solid var(--gold);' : ''}">
       <div style="display:flex;gap:9px;">
-        <div class="row-icon c-pink" style="flex-shrink:0;">📢</div>
-        <div class="body"><div class="t">Message from ${escapeHtml(staffName(n.from) || 'Manager')}</div>
+        <div class="row-icon c-pink" style="flex-shrink:0;">${unread ? '🔵' : ''}</div>
+        <div class="body"><div class="t">${kindLabel}</div>
         <div class="m">${escapeHtml(n.message||'')}</div>
         <div class="m" style="margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div></div>
       </div>
@@ -1584,6 +1652,13 @@ function renderStaffDash(){
   // Notification preview: latest broadcasts, most recent first, unread ones highlighted.
   const mine = myNotifications();
   const seenIds = new Set(JSON.parse(localStorage.getItem('bl_notifSeen_' + currentUserId) || '[]'));
+  // Seeing the preview on the dashboard counts as "seen" too — writes to Firestore so
+  // the manager's device picks up the tick without staff needing to open the bell screen.
+  mine.slice(0,3).forEach(n => {
+    if(!n.seenBy || !n.seenBy[currentUserId]){
+      updateDoc(doc(db,'branches',branchId,'notifications',n.id), { [`seenBy.${currentUserId}`]: serverTimestamp() }).catch(()=>{});
+    }
+  });
   const previewTitle = $('#staffNotifSectionTitle');
   const previewWrap = $('#staffNotifPreview');
   if(mine.length === 0){
@@ -1593,11 +1668,12 @@ function renderStaffDash(){
     previewTitle.style.display = '';
     previewWrap.innerHTML = mine.slice(0,3).map(n => {
       const unread = !seenIds.has(n.id);
+      const label = n.kind === 'task_edited' ? '✏️ Task updated' : n.kind === 'task_deleted' ? '🗑️ Task removed' : (staffName(n.from) || 'Manager');
       return `
       <div class="entry" style="${unread ? 'border-left:3px solid var(--gold);' : ''}">
         <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(n.from) || 'M')}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(n.from) || 'Manager')}</div>
+          <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(label)}</div>
           <div style="font-size:12px;margin-top:2px;">${escapeHtml(n.message || '')}</div>
           <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
         </div>
@@ -1621,6 +1697,13 @@ function renderStaffDash(){
   if(assignedToMe.length === 0){
     assignedList.innerHTML = '<div class="empty-state">No work assigned right now.</div>';
   } else {
+    // Mark any not-yet-seen assigned tasks as seen now that they're rendering on screen —
+    // this writes to Firestore (not localStorage) so the manager's device sees it too.
+    assignedToMe.forEach(e => {
+      if(!e.seenAt){
+        updateDoc(doc(db,'branches',branchId,'entries',e.id), { seenAt: serverTimestamp() }).catch(()=>{});
+      }
+    });
     assignedList.innerHTML = assignedToMe.slice(0,10).map(e => {
       const comments = e.comments || [];
       const commentsHtml = comments.map(c => `
@@ -1766,30 +1849,49 @@ function renderMgrOverview(){
   $('#mgrAvatarBtn').textContent = initials(currentUser.name);
   $('#mgrBranchLabel').textContent = branchData?.name ? `${branchData.name} overview` : 'Branch overview';
 
-  // Notification preview: latest reply activity from staff, unread ones highlighted.
+  // Notification preview: recent sent broadcasts (with tick) + reply activity, unread ones highlighted.
   const items = mgrActivityItems();
-  const lastSeen = Number(localStorage.getItem('bl_mgrNotifSeenAt_' + currentUserId) || 0);
+  const seenSet = mgrSeenIds();
+  const recentSent = notifications.filter(n => n.from === currentUserId).slice(0, 2);
   const previewTitle = $('#mgrNotifSectionTitle');
   const previewWrap = $('#mgrNotifPreview');
-  if(items.length === 0){
+  const sentPreviewHtml = recentSent.map(n => {
+    const targets = n.targets || [];
+    const seenByMap = n.seenBy || {};
+    const seenCount = targets.filter(t => seenByMap[t]).length;
+    const allSeen = targets.length > 0 && seenCount === targets.length;
+    const tick = allSeen ? '<span style="color:var(--lav-600);font-weight:700;">✓✓ Seen</span>' : seenCount > 0 ? `<span style="color:var(--lav-600);font-weight:700;">✓✓ ${seenCount}/${targets.length}</span>` : '<span style="color:#9CA3AF;font-weight:700;">✓ Sent</span>';
+    const kindLabel = n.kind === 'task_edited' ? '✏️ Task update' : n.kind === 'task_deleted' ? '🗑️ Task removed' : '📢 You sent';
+    return `
+    <div class="entry">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>${tick}
+        </div>
+        <div style="font-size:12px;margin-top:2px;">${escapeHtml(n.message||'')}</div>
+        <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(n.createdAt)}, ${fmtTime(n.createdAt)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const replyPreviewHtml = items.slice(0,3).map(it => {
+    const unread = !seenSet.has(it.id);
+    return `
+    <div class="entry" style="${unread ? 'border-left:3px solid var(--gold);' : ''}">
+      <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(it.from))}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(it.from))} replied</div>
+        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">on "${escapeHtml(it.task)}"</div>
+        <div style="font-size:12px;margin-top:4px;">${escapeHtml(it.text)}</div>
+        <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  if(!sentPreviewHtml && !replyPreviewHtml){
     previewTitle.style.display = 'none';
     previewWrap.innerHTML = '';
   } else {
     previewTitle.style.display = '';
-    previewWrap.innerHTML = items.slice(0,3).map(it => {
-      const itVal = it.at?.seconds ?? it.at ?? 0;
-      const unread = itVal > lastSeen;
-      return `
-      <div class="entry" style="${unread ? 'border-left:3px solid var(--gold);' : ''}">
-        <div class="s-avatar" style="width:34px;height:34px;font-size:12px;">${initials(staffName(it.from))}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:12.5px;">${unread ? '🔵 ' : ''}${escapeHtml(staffName(it.from))} replied</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">on "${escapeHtml(it.task)}"</div>
-          <div style="font-size:12px;margin-top:4px;">${escapeHtml(it.text)}</div>
-          <div style="font-size:10px;color:var(--ink-soft);margin-top:4px;">${fmtDate(it.at)}, ${fmtTime(it.at)}</div>
-        </div>
-      </div>`;
-    }).join('');
+    previewWrap.innerHTML = sentPreviewHtml + replyPreviewHtml;
   }
 
   const todayEntries = entries.filter(e => isToday(e.createdAt));
@@ -1819,9 +1921,10 @@ function renderMgrOverview(){
       const text = e.type==='assigned' ? e.task : `${e.customer? e.customer+' — ':''}${e.detail||''}`;
       const commentCount = e.comments ? e.comments.length : 0;
       const commentTag = commentCount > 0 ? ` <span style="color:var(--lav-600);font-weight:700;">💬 ${commentCount}</span>` : '';
+      const tick = e.type === 'assigned' ? `<span style="margin-left:4px;color:${e.seenAt ? 'var(--lav-600)' : '#9CA3AF'};font-weight:700;" title="${e.seenAt ? 'Seen' : 'Not seen yet'}">${e.seenAt ? '✓✓' : '✓'}</span>` : '';
       return `<div class="entry" style="width:100%;border:1px solid var(--lav-100);">
         <button style="all:unset;display:flex;gap:9px;flex:1;min-width:0;cursor:pointer;" data-feed-drill="${e.type==='assigned'?e.assignedTo:e.staffId}">
-          ${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}</div><div class="m">${fmtTime(e.createdAt)}</div></div>
+          ${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}${tick}</div><div class="m">${fmtTime(e.createdAt)}${e.type==='assigned' ? (e.seenAt ? ' · Seen '+fmtTime(e.seenAt) : ' · Not seen yet') : ''}</div></div>
         </button>
         <button data-feed-edit="${e.id}" style="background:none;border:none;color:var(--lav-600);font-size:14px;padding:2px 6px;flex-shrink:0;">✏️</button>
         <button data-feed-delete="${e.id}" style="background:none;border:none;color:var(--ink-soft);font-size:15px;padding:2px 4px;flex-shrink:0;">✕</button>
@@ -1858,6 +1961,10 @@ function confirmDeleteFeedEntry(entryId){
   $('#modalOverlay').classList.add('active');
   $('#modalCancel').onclick = closeModal;
   $('#modalConfirmDelete').onclick = async () => {
+    const e = entries.find(x => x.id === entryId);
+    if(e && e.type === 'assigned' && e.assignedTo){
+      await postSystemNotification(e.assignedTo, 'task_deleted', `Your task was removed: "${e.task||''}"`);
+    }
     await deleteDoc(doc(db, 'branches', branchId, 'entries', entryId));
     closeModal();
     toast('Entry deleted');
@@ -1865,6 +1972,19 @@ function confirmDeleteFeedEntry(entryId){
 }
 
 let editingEntryId = null;
+/* Posts a system notification doc so an edit/delete by the manager shows up on the
+   affected staff member's dashboard and bell — persists even after the entry itself
+   is edited/deleted, since it's its own Firestore document, not derived from entries. */
+async function postSystemNotification(targetStaffId, kind, message){
+  if(!targetStaffId) return;
+  try{
+    await addDoc(collection(db, 'branches', branchId, 'notifications'), {
+      message, targets: [targetStaffId], from: currentUserId,
+      kind, // 'broadcast' | 'task_edited' | 'task_deleted'
+      createdAt: serverTimestamp(), seenBy: {}
+    });
+  }catch(e){ console.warn('Failed to post system notification', e); }
+}
 function openEditEntry(entryId){
   const e = entries.find(x => x.id === entryId);
   if(!e) return;
@@ -1896,6 +2016,9 @@ function openEditEntry(entryId){
       const dueDate = $('#editTaskDue').value;
       if(!task){ toast('Task description required'); return; }
       await updateDoc(doc(db, 'branches', branchId, 'entries', entryId), { task, dueDate });
+      if(e.assignedTo && currentUser?.isManager){
+        await postSystemNotification(e.assignedTo, 'task_edited', `Your task was updated: "${task}"`);
+      }
     } else {
       const customer = $('#editEntryCustomer').value.trim();
       const detail = $('#editEntryDetail').value.trim();
@@ -2147,7 +2270,7 @@ $('#broadcastSendBtn').onclick = async () => {
   if(!msg){ toast('Type a message'); return; }
   const targets = broadcastSelected.has('__all__') ? staffList.filter(s=>!s.isManager).map(s=>s.id) : Array.from(broadcastSelected);
   await addDoc(collection(db,'branches',branchId,'notifications'), {
-    message: msg, targets, from: currentUserId, createdAt: serverTimestamp()
+    message: msg, targets, from: currentUserId, kind: 'broadcast', createdAt: serverTimestamp(), seenBy: {}
   });
   toast('Sent to ' + (broadcastSelected.has('__all__') ? 'everyone' : targets.length + ' staff'));
   showScreen('mgr-overview');

@@ -23,6 +23,13 @@
     let logText = '';
     const log = (s) => { logText += s + "\n"; };
     try {
+      log('RAW Notification.permission at script start = ' + Notification.permission);
+      if (Notification.permission === 'default') {
+        log('Calling raw Notification.requestPermission()...');
+        const rawPerm = await Notification.requestPermission();
+        log('Raw requestPermission() returned: ' + rawPerm);
+        log('Notification.permission now = ' + Notification.permission);
+      }
       await OneSignal.init({
         appId: "ff7adc5f-e938-4d48-8729-679ee64f2594",
         serviceWorkerParam: { scope: "/Branch_345/" },

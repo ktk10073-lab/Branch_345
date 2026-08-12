@@ -1028,7 +1028,7 @@ async function loadBranch(bId){
    then paste it below. Until it's set, sendPush() no-ops so nothing breaks — in-app
    notifications (the Firestore-based ones) keep working exactly as before either way. */
 const ONESIGNAL_APP_ID = "ff7adc5f-e938-4d48-8729-679ee64f2594";
-const ONESIGNAL_REST_API_KEY = ""; // <-- paste your REST API Key here
+const ONESIGNAL_REST_API_KEY = "os_v2_app_755nyx7jhbgurbzjm6pomtzfsrwalwc2yp5uv4vd3zdex2oobgpp3xkn3pdsm3cs55iaoey4qswubovglq6fxzgfm4pizx3qrmvawpy";
 async function sendPush(targetStaffIds, title, body){
   if(!ONESIGNAL_REST_API_KEY){
     console.warn('OneSignal REST API key not set — skipping real push, in-app notification still saved.');

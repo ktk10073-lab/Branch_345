@@ -13,6 +13,8 @@
   OneSignalDeferred.push(async function(OneSignal) {
     await OneSignal.init({
       appId: "ff7adc5f-e938-4d48-8729-679ee64f2594",
+      serviceWorkerParam: { scope: "/Branch_345/" },
+      serviceWorkerPath: "firebase-messaging-sw.js",
     });
   });
 </script>

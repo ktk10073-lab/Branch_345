@@ -16,6 +16,28 @@
       serviceWorkerParam: { scope: "/Branch_345/" },
       serviceWorkerPath: "firebase-messaging-sw.js",
     });
+    // TEMP DEBUG — remove after troubleshooting
+    try {
+      const box = document.createElement('div');
+      box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#111;color:#0f0;font:11px monospace;padding:8px;white-space:pre-wrap;max-height:40vh;overflow:auto;';
+      document.body.appendChild(box);
+      const log = (s) => { box.textContent += s + "\n"; };
+      log('Notification.permission: ' + Notification.permission);
+      log('OneSignal.User.PushSubscription.id: ' + OneSignal.User.PushSubscription.id);
+      log('OneSignal.User.PushSubscription.optedIn: ' + OneSignal.User.PushSubscription.optedIn);
+      const perm = await OneSignal.Notifications.permission;
+      log('OneSignal.Notifications.permission: ' + perm);
+      if (!OneSignal.User.PushSubscription.id) {
+        log('No subscription id — attempting requestPermission()...');
+        await OneSignal.Notifications.requestPermission();
+        log('After requestPermission — id: ' + OneSignal.User.PushSubscription.id);
+      }
+    } catch (e) {
+      const box = document.createElement('div');
+      box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#400;color:#fff;font:11px monospace;padding:8px;white-space:pre-wrap;';
+      box.textContent = 'OneSignal ERROR: ' + (e && e.message ? e.message : e);
+      document.body.appendChild(box);
+    }
   });
 </script>
 <style>

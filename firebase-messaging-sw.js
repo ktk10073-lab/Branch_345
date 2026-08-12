@@ -1,4 +1,5 @@
-// Branch Log service worker — v4 (Spark/free-plan version)
+importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+// Branch Log service worker — v5 (adds OneSignal real push, merged with existing worker)
 // No Firebase Cloud Messaging here — FCM push requires the Blaze plan, which this
 // project isn't on. Instead this adds Periodic Background Sync: a free, best-effort
 // API that occasionally wakes this service worker (commonly every few hours, browser-

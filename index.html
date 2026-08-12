@@ -537,7 +537,7 @@
     <div class="navbar mgr">
       <button class="navitem active" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
       <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
-      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      
       <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
     </div>
   </div>
@@ -594,27 +594,22 @@
     <div class="navbar mgr">
       <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
       <button class="navitem active" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
-      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      
       <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
     </div>
   </div>
 
   <!-- MANAGER: MANAGE STAFF -->
   <div class="screen" id="screen-mgr-staff">
-    <div class="db-top mgr-top" style="border-radius:0 0 22px 22px;">
+    <div class="p-top" style="padding:20px;text-align:left;">
+      <button class="backarrow" data-close="mgr-profile" style="position:static;margin-bottom:10px;">← Back</button>
       <h2>Manage staff</h2>
-      <p class="greet" id="staffCountLabel">0 people</p>
+      <p id="staffCountLabel">0 people</p>
     </div>
     <div class="main-scroll">
       <button class="addbtn" id="addStaffBtn">＋ Add staff member</button>
       <div class="sectiontitle">Team</div>
       <div id="staffListWrap"></div>
-    </div>
-    <div class="navbar mgr">
-      <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
-      <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
-      <button class="navitem active" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
-      <button class="navitem" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
     </div>
   </div>
 
@@ -689,6 +684,10 @@
       <div class="row-list">
         <button class="row" id="weeklySummaryBtn"><div class="row-icon c-green">📊</div><div><div class="t">Weekly summary</div><div class="m" id="weeklyTotalLabel">–</div></div><span class="chev">›</span></button>
       </div>
+      <div class="sectiontitle">Team</div>
+      <div class="row-list">
+        <button class="row" id="manageStaffBtn"><div class="row-icon c-blue">👥</div><div><div class="t">Manage staff</div><div class="m" id="staffCountPreview">–</div></div><span class="chev">›</span></button>
+      </div>
       <div class="sectiontitle">Security</div>
       <div class="row-list">
         <button class="row" id="mgrChangeSecurityBtn"><div class="row-icon c-purple">🔒</div><div><div class="t">Change unlock method</div><div class="m" id="mgrCurrentSecMethod">Pattern</div></div><span class="chev">›</span></button>
@@ -701,7 +700,7 @@
     <div class="navbar mgr">
       <button class="navitem" data-nav="mgr-overview"><span class="navicon">⌂</span>Overview</button>
       <button class="navitem" data-nav="mgr-pending"><span class="navicon">⏳</span>Pending</button>
-      <button class="navitem" data-nav="mgr-staff"><span class="navicon">👥</span>Staff</button>
+      
       <button class="navitem active" data-nav="mgr-profile"><span class="navicon">⚙</span>More</button>
     </div>
   </div>
@@ -2679,6 +2678,8 @@ function renderMgrProfile(){
   $('#mgrProfileAvatar').textContent = initials(currentUser.name);
   $('#mgrProfileName').textContent = currentUser.name;
   $('#mgrProfileBranch').textContent = `Branch Manager · ${branchData?.name || ''}`;
+  $('#manageStaffBtn').style.display = currentUser.isManager ? 'flex' : 'none';
+  $('#staffCountPreview').textContent = `${staffList.length} people`;
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
   const weekEntries = entries.filter(e => {
@@ -2689,6 +2690,7 @@ function renderMgrProfile(){
   const method = localStorage.getItem('bl_secMethod_' + currentUserId);
   $('#mgrCurrentSecMethod').textContent = method === 'webauthn' ? 'Phone security (fingerprint/face/PIN)' : 'Pattern';
 }
+$('#manageStaffBtn').onclick = () => { showScreen('mgr-staff'); renderAll(); };
 
 /* ================= Central render ================= */
 function renderAll(){

@@ -385,6 +385,7 @@
         <button id="staffPermBannerBtn" style="background:#F5C97D;border:none;border-radius:8px;padding:6px 10px;font-weight:700;font-size:11px;flex-shrink:0;">Enable</button>
       </div>
       <button class="addbtn" id="staffAddBtn">＋ Add entry</button>
+      <button class="addbtn" id="staffDelegateAccessBtn" style="display:none;background:var(--gold);">🛡️ Manager tools</button>
       <div class="sectiontitle" id="staffNotifSectionTitle" style="display:none;">Notifications</div>
       <div class="entry-list" id="staffNotifPreview"></div>
       <div class="sectiontitle">Assigned to you</div>
@@ -621,6 +622,16 @@
     <div class="form-top"><button class="x" data-close="mgr-overview">✕</button><h2>Edit entry</h2></div>
     <div class="form-body" id="editEntryFormBody">
       <!-- fields injected dynamically based on entry type -->
+    </div>
+  </div>
+
+  <!-- MANAGER: DELEGATE PERMISSIONS -->
+  <div class="screen" id="screen-delegate">
+    <div class="form-top"><button class="x" data-close="mgr-staff">✕</button><h2>Delegate permissions</h2></div>
+    <div class="form-body">
+      <div class="empty-state" style="padding:6px 0 10px;text-align:left;color:var(--ink-soft);font-size:12.5px;" id="delegateIntro"></div>
+      <div class="row-list" id="delegatePermsList" style="padding:0;"></div>
+      <button class="savebtn" id="delegateSaveBtn" style="margin-top:6px;">Save permissions</button>
     </div>
   </div>
 
@@ -1368,7 +1379,7 @@ function renderMgrNotifs(){
           <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
           <div style="display:flex;align-items:center;gap:8px;">
             ${tick}
-            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
+            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-notif-edit="${n.id}" style="background:none;border:none;color:var(--lav-600);font-size:13px;padding:0 2px;">✏️</button><button data-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
           </div>
         </div>
         <div style="font-size:12px;margin-top:4px;">${escapeHtml(n.message||'')}</div>
@@ -1406,6 +1417,9 @@ function renderMgrNotifs(){
     });
     $$('[data-notif-delete]', wrap).forEach(btn => {
       btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.notifDelete); };
+    });
+    $$('[data-notif-edit]', wrap).forEach(btn => {
+      btn.onclick = (ev) => { ev.stopPropagation(); openEditNotification(btn.dataset.notifEdit); };
     });
     $$('[data-notif-detail]', wrap).forEach(el => {
       el.onclick = (ev) => { ev.stopPropagation(); openNotifDetail(el.dataset.notifDetail); };
@@ -1448,6 +1462,40 @@ function openNotifDetail(notifId){
     </div>`;
   $('#modalOverlay').classList.add('active');
   $('#modalCancel').onclick = closeModal;
+}
+/* Edit the text of a broadcast the manager already sent. Updates the same Firestore
+   doc in place, so it changes live for every staff member it was sent to — clears
+   seenBy so they're notified again with the corrected wording, since silently
+   editing a message someone already read without re-flagging it would be confusing. */
+function openEditNotification(notifId){
+  const n = notifications.find(x => x.id === notifId);
+  if(!n) return;
+  $('#modalSheet').innerHTML = `
+    <div style="padding:24px;">
+      <h2 style="font-size:16px;margin-bottom:12px;">Edit message</h2>
+      <textarea class="field" id="editNotifText" style="margin-bottom:14px;min-height:80px;">${escapeHtml(n.message||'')}</textarea>
+      <div style="display:flex;gap:10px;">
+        <button id="modalCancel" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-100);color:var(--lav-700);">Cancel</button>
+        <button id="modalConfirmEdit" style="flex:1;border:none;border-radius:13px;padding:12px;font-weight:700;font-family:'Manrope',sans-serif;background:var(--lav-700);color:#fff;">Save</button>
+      </div>
+    </div>`;
+  $('#modalOverlay').classList.add('active');
+  $('#modalCancel').onclick = closeModal;
+  $('#modalConfirmEdit').onclick = async () => {
+    const newText = $('#editNotifText').value.trim();
+    if(!newText){ toast('Message cannot be empty'); return; }
+    try{
+      await updateDoc(doc(db, 'branches', branchId, 'notifications', notifId), {
+        message: newText, editedAt: serverTimestamp(), seenBy: {}
+      });
+      sendPush(n.targets || [], '✏️ Message updated', newText);
+      closeModal();
+      toast('Message updated');
+    }catch(err){
+      console.error('Edit notification failed', err);
+      toast('Could not save — ' + (err?.message || 'check your connection'));
+    }
+  };
 }
 function confirmDeleteNotification(notifId){
   $('#modalSheet').innerHTML = `
@@ -1702,6 +1750,7 @@ $$('[data-close]').forEach(btn => {
 });
 $('#staffAvatarBtn').onclick = () => { showScreen('staff-profile'); renderAll(); };
 $('#mgrAvatarBtn').onclick = () => { showScreen('mgr-profile'); renderAll(); };
+$('#staffDelegateAccessBtn').onclick = () => { showScreen('mgr-overview'); renderAll(); };
 $('#staffNotifBtn').onclick = () => {
   showScreen('staff-notifs');
   renderStaffNotifs();
@@ -1808,6 +1857,7 @@ function staffName(id){
 function renderStaffDash(){
   if(!currentUser || currentUser.isManager) return;
   $('#staffGreetName').textContent = `${(currentUser.name||'').split(' ')[0]}'s day`;
+  $('#staffDelegateAccessBtn').style.display = hasAnyDelegatePerm() ? 'block' : 'none';
 
   // Notification preview: latest broadcasts, most recent first, unread ones highlighted.
   const mine = myNotifications();
@@ -2007,7 +2057,7 @@ $$('[data-toggle]').forEach(btn => {
 
 /* ================= Manager: overview ================= */
 function renderMgrOverview(){
-  if(!currentUser?.isManager) return;
+  if(!currentUser?.isManager && !hasAnyDelegatePerm()) return;
   $('#mgrAvatarBtn').textContent = initials(currentUser.name);
   $('#mgrBranchLabel').textContent = branchData?.name ? `${branchData.name} overview` : 'Branch overview';
 
@@ -2031,7 +2081,7 @@ function renderMgrOverview(){
           <div style="font-weight:700;font-size:12.5px;">${kindLabel}</div>
           <div style="display:flex;align-items:center;gap:8px;">
             ${tick}
-            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-ov-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
+            ${n.kind !== 'task_edited' && n.kind !== 'task_deleted' ? `<button data-ov-notif-edit="${n.id}" style="background:none;border:none;color:var(--lav-600);font-size:13px;padding:0 2px;">✏️</button><button data-ov-notif-delete="${n.id}" style="background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0 2px;">✕</button>` : ''}
           </div>
         </div>
         <div style="font-size:12px;margin-top:2px;">${escapeHtml(n.message||'')}</div>
@@ -2061,6 +2111,9 @@ function renderMgrOverview(){
     $$('[data-ov-notif-delete]', previewWrap).forEach(btn => {
       btn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteNotification(btn.dataset.ovNotifDelete); };
     });
+    $$('[data-ov-notif-edit]', previewWrap).forEach(btn => {
+      btn.onclick = (ev) => { ev.stopPropagation(); openEditNotification(btn.dataset.ovNotifEdit); };
+    });
     $$('[data-notif-detail]', previewWrap).forEach(el => {
       el.onclick = () => openNotifDetail(el.dataset.notifDetail);
     });
@@ -2071,6 +2124,8 @@ function renderMgrOverview(){
   $('#mgrStatEntries').textContent = todayEntries.length;
   $('#mgrStatPending').textContent = pending.length;
   $('#mgrStatStaff').textContent = staffList.filter(s=>!s.isManager).length;
+  $('#mgrAssignBtn').style.display = hasDelegatePerm('assignWork') ? 'block' : 'none';
+  $('#mgrBroadcastBtn').style.display = hasDelegatePerm('sendBroadcast') ? 'block' : 'none';
 
   const personRow = $('#mgrPersonRow');
   personRow.innerHTML = staffList.filter(s=>!s.isManager).map(s => {
@@ -2094,12 +2149,14 @@ function renderMgrOverview(){
       const commentCount = e.comments ? e.comments.length : 0;
       const commentTag = commentCount > 0 ? ` <span style="color:var(--lav-600);font-weight:700;">💬 ${commentCount}</span>` : '';
       const tick = e.type === 'assigned' ? `<span style="margin-left:4px;color:${e.seenAt ? 'var(--lav-600)' : '#9CA3AF'};font-weight:700;" title="${e.seenAt ? 'Seen' : 'Not seen yet'}">${e.seenAt ? '✓✓' : '✓'}</span>` : '';
+      const canEdit = hasDelegatePerm('editEntries');
+      const canDelete = hasDelegatePerm('deleteEntries');
       return `<div class="entry" style="width:100%;border:1px solid var(--lav-100);">
         <button style="all:unset;display:flex;gap:9px;flex:1;min-width:0;cursor:pointer;" data-feed-drill="${e.type==='assigned'?e.assignedTo:e.staffId}">
           ${badge}<div class="body"><div class="t">${escapeHtml(name)} — ${escapeHtml(text||'')}${commentTag}${tick}</div><div class="m">${fmtTime(e.createdAt)}${e.type==='assigned' ? (e.seenAt ? ' · Seen '+fmtTime(e.seenAt) : ' · Not seen yet') : ''}</div></div>
         </button>
-        <button data-feed-edit="${e.id}" style="background:none;border:none;color:var(--lav-600);font-size:14px;padding:2px 6px;flex-shrink:0;">✏️</button>
-        <button data-feed-delete="${e.id}" style="background:none;border:none;color:var(--ink-soft);font-size:15px;padding:2px 4px;flex-shrink:0;">✕</button>
+        ${canEdit ? `<button data-feed-edit="${e.id}" style="background:none;border:none;color:var(--lav-600);font-size:14px;padding:2px 6px;flex-shrink:0;">✏️</button>` : ''}
+        ${canDelete ? `<button data-feed-delete="${e.id}" style="background:none;border:none;color:var(--ink-soft);font-size:15px;padding:2px 4px;flex-shrink:0;">✕</button>` : ''}
       </div>`;
     }).join('');
     $$('[data-feed-drill]', feedList).forEach(btn => { btn.onclick = () => openDrilldown(btn.dataset.feedDrill); });
@@ -2302,6 +2359,7 @@ $('#assignSaveBtn').onclick = async () => {
 
 /* ================= Manager: pending ================= */
 function renderPending(){
+  if(!currentUser?.isManager && !hasDelegatePerm('viewAll')) return;
   const pending = entries.filter(e => e.type==='assigned' && e.status !== 'done');
   const overdue = pending.filter(e => dueStatus(e.dueDate).cls === 'late');
   const dueToday = pending.filter(e => dueStatus(e.dueDate).cls === 'today2');
@@ -2313,6 +2371,8 @@ function renderPending(){
   function section(title, list, cls){
     if(list.length === 0) return '';
     const chipColor = cls==='late'?'var(--danger)':cls==='today2'?'var(--warn)':'var(--lav-400)';
+    const canEdit = hasDelegatePerm('editEntries');
+    const canDelete = hasDelegatePerm('deleteEntries');
     let html = `<div class="sectiontitle">${title} <span class="cnt" style="background:${chipColor}">${list.length}</span></div>`;
     list.forEach(e => {
       const ds = dueStatus(e.dueDate);
@@ -2320,10 +2380,10 @@ function renderPending(){
         <div class="p-item-top"><div class="s-avatar" style="width:26px;height:26px;font-size:10px;">${initials(staffName(e.assignedTo))}</div>
         <div class="nm">${escapeHtml(staffName(e.assignedTo))}</div><div class="due ${ds.cls}">${ds.label}</div></div>
         <div class="task">${escapeHtml(e.task||'')}</div>
-        <div class="p-actions">
-          <button class="act-done" data-mark-done="${e.id}">Mark done</button>
-          <button class="act-cancel" data-cancel="${e.id}">Cancel</button>
-        </div></div>`;
+        ${(canEdit || canDelete) ? `<div class="p-actions">
+          ${canEdit ? `<button class="act-done" data-mark-done="${e.id}">Mark done</button>` : ''}
+          ${canDelete ? `<button class="act-cancel" data-cancel="${e.id}">Cancel</button>` : ''}
+        </div>` : ''}</div>`;
     });
     return html;
   }
@@ -2340,16 +2400,28 @@ function renderPending(){
 
 /* ================= Manager: staff list (manage) ================= */
 function renderStaffManage(){
+  if(!currentUser?.isManager){
+    // Delegates never get staff add/remove/delegate power — that stays manager-only.
+    showScreen('mgr-overview');
+    toast("Only the branch manager can manage staff");
+    return;
+  }
   $('#staffCountLabel').textContent = `${staffList.length} people`;
   const wrap = $('#staffListWrap');
-  wrap.innerHTML = staffList.map(s => `
+  wrap.innerHTML = staffList.map(s => {
+    const perms = s.delegatePerms || [];
+    const delegateBadge = perms.length > 0 ? '<span class="s-status" style="background:#E7DDF7;color:#6E5AA0;">Delegated</span>' : '';
+    return `
     <div class="s-row">
       <div class="s-avatar ${s.isManager?'mgr':''}" style="${s.isManager?'background:linear-gradient(135deg,var(--gold),var(--lav-700));':''}">${initials(s.name)}</div>
       <div class="s-info"><div class="nm">${escapeHtml(s.name)}</div><div class="role">${escapeHtml(s.role)}</div></div>
-      ${s.joined===false ? '<span class="s-status pending">Invite sent</span>' : (s.isManager?'':'<span class="s-status active">Active</span>')}
+      ${s.joined===false ? '<span class="s-status pending">Invite sent</span>' : (s.isManager?'':(delegateBadge || '<span class="s-status active">Active</span>'))}
+      ${s.isManager ? '' : `<button class="s-menu" data-delegate="${s.id}" title="Delegate permissions">🛡️</button>`}
       ${s.isManager ? '' : `<button class="s-menu" data-remove="${s.id}">✕</button>`}
-    </div>`).join('');
+    </div>`;
+  }).join('');
   $$('[data-remove]', wrap).forEach(btn => { btn.onclick = () => confirmRemoveStaff(btn.dataset.remove); });
+  $$('[data-delegate]', wrap).forEach(btn => { btn.onclick = () => openDelegateScreen(btn.dataset.delegate); });
 }
 $('#addStaffBtn').onclick = () => {
   $('#newStaffName').value = '';
@@ -2392,6 +2464,45 @@ $('#copyInviteBtn').onclick = async () => {
     toast('Could not copy — long-press the link to copy manually');
   }
 };
+const DELEGATE_PERM_OPTIONS = [
+  { key: 'viewAll', label: 'View all staff work', desc: 'See every entry in the live feed and drilldowns' },
+  { key: 'editEntries', label: 'Edit entries', desc: 'Modify task text, due dates, visit/note details' },
+  { key: 'deleteEntries', label: 'Delete entries', desc: 'Remove entries from the feed permanently' },
+  { key: 'assignWork', label: 'Assign work', desc: 'Give tasks to other staff members' },
+  { key: 'sendBroadcast', label: 'Send notifications', desc: 'Broadcast messages to staff' },
+];
+let delegateTargetId = null;
+function openDelegateScreen(staffId){
+  const s = staffList.find(x => x.id === staffId);
+  if(!s) return;
+  delegateTargetId = staffId;
+  const current = new Set(s.delegatePerms || []);
+  $('#delegateIntro').innerHTML = `Choose what <b style="color:var(--ink);">${escapeHtml(s.name)}</b> can do beyond their own work. Unchecked stays staff-only.`;
+  $('#delegatePermsList').innerHTML = DELEGATE_PERM_OPTIONS.map(p => `
+    <div class="row" style="cursor:default;">
+      <div class="row-icon c-purple">🛡️</div>
+      <div style="flex:1;"><div class="t">${p.label}</div><div class="m">${p.desc}</div></div>
+      <button class="toggle ${current.has(p.key)?'on':''}" data-perm-toggle="${p.key}"></button>
+    </div>`).join('');
+  $$('[data-perm-toggle]', $('#delegatePermsList')).forEach(btn => {
+    btn.onclick = () => btn.classList.toggle('on');
+  });
+  showScreen('delegate');
+}
+$('#delegateSaveBtn').onclick = async () => {
+  if(!delegateTargetId) return;
+  const selected = $$('[data-perm-toggle].on', $('#delegatePermsList')).map(b => b.dataset.permToggle);
+  await updateDoc(doc(db, 'branches', branchId, 'staff', delegateTargetId), { delegatePerms: selected });
+  toast(selected.length > 0 ? 'Permissions saved' : 'All permissions removed');
+  showScreen('mgr-staff');
+};
+function hasDelegatePerm(key){
+  if(currentUser?.isManager) return true;
+  return (currentUser?.delegatePerms || []).includes(key);
+}
+function hasAnyDelegatePerm(){
+  return !currentUser?.isManager && (currentUser?.delegatePerms || []).length > 0;
+}
 function confirmRemoveStaff(staffId){
   const s = staffList.find(x=>x.id===staffId);
   if(!s) return;
